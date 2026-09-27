@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USERNAME: str = "neo4j"
     NEO4J_PASSWORD: str = "password"
-    CHROMA_PATH: str = "./chroma_db"
+    CHROMA_PATH: str = "./data/chroma"
     OLLAMA_URL: str = "http://localhost:11434"
     LLM_MODEL: str = "llama3"
     EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"

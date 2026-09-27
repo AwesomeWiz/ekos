@@ -47,6 +47,8 @@ class GitHubConnector(BaseConnector):
             "name": data["repository"]["name"],
             "owner": data["repository"]["owner"]["login"],
             "default_branch": data["repository"]["default_branch"],
+            "description": data["repository"].get("description"),
+            "url": data["repository"].get("html_url"),
         },
         "branches": [
             {
@@ -72,7 +74,9 @@ class GitHubConnector(BaseConnector):
             {
                 "number": issue["number"],
                 "title": issue["title"],
+                "body": issue.get("body"),
                 "state": issue["state"],
+                "is_pull_request": bool(issue.get("pull_request")),
                 "url": issue.get("html_url"),
             }
             for issue in data.get("issues", [])

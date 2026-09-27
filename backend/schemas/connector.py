@@ -45,6 +45,13 @@ class GitHubTestResponse(BaseModel):
     account: str
 
 
+class IndexingSummary(BaseModel):
+    status: str
+    documents_indexed: int = 0
+    chroma_total: int | None = None
+    error: str | None = None
+
+
 class GitHubSyncResponse(BaseModel):
     status: str
     connector: str
@@ -54,3 +61,4 @@ class GitHubSyncResponse(BaseModel):
     commits: int
     issues: int
     synced_at: datetime
+    indexing: IndexingSummary | None = None

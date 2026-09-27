@@ -15,6 +15,7 @@ from auth.security import hash_password
 from api.auth import router as auth_router
 from api.profile import router as profile_router
 from api.connectors import router as connectors_router
+from api.search import router as search_router
 
 def init_db(target_engine=None):
     """Create database tables and seed initial default data."""
@@ -106,6 +107,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix=settings.API_PREFIX)
 app.include_router(profile_router, prefix=settings.API_PREFIX)
 app.include_router(connectors_router, prefix=settings.API_PREFIX)
+app.include_router(search_router, prefix=settings.API_PREFIX)
 
 @app.get("/")
 def root():

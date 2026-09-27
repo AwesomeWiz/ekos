@@ -47,13 +47,10 @@ describe('complete demo flows', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('sends the actual question and follows its sample citation', async () => {
-    openRoute();
-    submit('Explain Redis caching');
-    expect(within(screen.getByLabelText('Conversation')).getByText('Explain Redis caching')).toBeTruthy();
-    expect(screen.getByText('Preparing sample answer…')).toBeTruthy();
-    expect(await screen.findByText(demoAnswer[0])).toBeTruthy();
-    expect(screen.getByTestId('route').textContent).toMatch(/^\/chat\/[\w-]+$/);
+  it('preserves the explicitly labeled sample conversation and its citations', async () => {
+    openRoute('/chat/redis');
+    expect(screen.getByText('Sample conversation')).toBeTruthy();
+    expect(screen.getByText(demoAnswer[0])).toBeTruthy();
     fireEvent.click(screen.getByRole('link', { name: '[1] PAY-42' }));
     expect(within(screen.getByRole('complementary', { name: 'Selected entity details' })).getByRole('heading', { name: 'PAY-42' })).toBeTruthy();
   });
@@ -61,34 +58,34 @@ describe('complete demo flows', () => {
   it('preserves follow-ups, switches history, and restores after remount', async () => {
     openRoute();
     submit('Explain Redis caching');
-    await screen.findByText(demoAnswer[0]);
+    await screen.findByText('Sign in to search your indexed knowledge.');
     const route = screen.getByTestId('route').textContent!;
     submit('Who works on this service?', 'Ask a follow-up...');
-    await screen.findByText(/Abhishikth S works on the Payment Service in the sample graph/);
+    await waitFor(() => expect(screen.getAllByText('Sign in to search your indexed knowledge.')).toHaveLength(2));
     fireEvent.click(screen.getByRole('link', { name: 'New chat' }));
     expect((screen.getByRole('textbox', { name: 'Ask EKOS anything...' }) as HTMLTextAreaElement).value).toBe('');
     submit('What is the weather?');
-    await screen.findByText(/This demo covers Redis and the Payment Service/);
+    await screen.findByText('Sign in to search your indexed knowledge.');
     expect(screen.queryByRole('heading', { name: 'Sample context' })).toBeNull();
     fireEvent.click(screen.getByRole('link', { name: 'Explain Redis caching' }));
     expect(screen.getByText('Who works on this service?')).toBeTruthy();
     cleanup();
     openRoute(route);
     expect(screen.getByText('Who works on this service?')).toBeTruthy();
-    expect(screen.getByText(demoAnswer[0])).toBeTruthy();
+    expect(screen.getAllByText('Sign in to search your indexed knowledge.')).toHaveLength(2);
   });
 
   it('sends suggested questions automatically and supports Enter submission', async () => {
     openRoute();
     fireEvent.click(screen.getByRole('button', { name: 'Who owns the payment service?' }));
-    await screen.findByText(/Abhishikth S works on the Payment Service in the sample graph/);
+    await screen.findByText('Sign in to search your indexed knowledge.');
     expect(within(screen.getByLabelText('Conversation')).getByText('Who owns the payment service?')).toBeTruthy();
     const input = screen.getByRole('textbox', { name: 'Ask a follow-up...' });
     fireEvent.change(input, { target: { value: 'Find architecture docs' } });
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
     expect(within(screen.getByLabelText('Conversation')).queryByText('Find architecture docs')).toBeNull();
     fireEvent.keyDown(input, { key: 'Enter' });
-    await screen.findByText('Architecture documentation for the Payment Service and its connected dependencies.');
+    await waitFor(() => expect(screen.getAllByText('Sign in to search your indexed knowledge.')).toHaveLength(2));
   });
 
   it('selects, searches, filters, applies hops, resets, and asks about an entity', async () => {
@@ -115,7 +112,7 @@ describe('complete demo flows', () => {
     expect(within(screen.getByRole('complementary', { name: 'Selected entity details' })).getByRole('heading', { name: 'Redis' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Ask EKOS about this' }));
     expect(within(screen.getByLabelText('Conversation')).getByText('Tell me about Redis.')).toBeTruthy();
-    await screen.findByText(demoAnswer[0]);
+    await screen.findByText('Sign in to search your indexed knowledge.');
   });
 
   it('loads API connector statuses, refreshes them, and signs out', async () => {
