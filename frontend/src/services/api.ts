@@ -1,0 +1,61 @@
+// These contracts mirror backend/schemas and the routes registered in backend/main.py.
+export interface TokenResponse { access_token: string; token_type: string }
+export interface UserProfile { id: string; full_name: string; email: string; role: string | null; organization: string | null; permissions: { resource: string; action: string }[] }
+export interface Connector {
+  id: string; name: string; type: string; status: string;
+  organization_id: string | null; created_at: string;
+  configuration: { id: string; connector_id: string; api_url: string | null; sync_interval: string | null; last_sync: string | null } | null;
+}
+export interface GitHubTestResult { status: string; connector: string; account: string }
+export interface GitHubSyncResult { status: string; connector: string; repository: string; default_branch: string; branches: number; commits: number; issues: number; synced_at: string }
+
+export class ApiError extends Error {
+  constructor(message: string, public status = 0) { super(message); this.name = 'ApiError'; }
+}
+
+const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const prefix = (import.meta.env.VITE_API_PREFIX || '/api').replace(/\/$/, '');
+export const SESSION_EXPIRED_EVENT = 'ekos:session-expired';
+
+interface RequestOptions { method?: 'GET' | 'POST'; body?: unknown; token?: string; signal?: AbortSignal; timeoutMs?: number }
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abort = () => controller.abort();
+  options.signal?.addEventListener('abort', abort, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, options.timeoutMs ?? 10000);
+  try {
+    const response = await fetch(`${baseUrl}${prefix}${path}`, {
+      method: options.method || 'GET', signal: controller.signal,
+      headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}) },
+      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+    });
+    if (!response.ok) {
+      const detail = (await response.json().catch(() => null) as { detail?: unknown } | null)?.detail;
+      if (response.status === 401 && options.token) window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: options.token }));
+      if (response.status === 401) throw new ApiError(options.token ? 'Your session has expired. Please sign in again.' : 'Incorrect email or password.', 401);
+      if (response.status === 403) throw new ApiError('Your account does not have access to this resource.', 403);
+      if (response.status === 422) throw new ApiError('Please check the information you entered.', 422);
+      throw new ApiError(typeof detail === 'string' ? detail : `The EKOS backend could not complete this request (${response.status}). Please try again.`, response.status);
+    }
+    return await response.json() as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (options.signal?.aborted) throw error;
+    if (timedOut) throw new ApiError('The EKOS backend took too long to respond. Please try again.');
+    throw new ApiError('Unable to reach the EKOS backend.');
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', abort);
+  }
+}
+
+export const api = {
+  login: (email: string, password: string) => request<TokenResponse>('/login', { method: 'POST', body: { email, password } }),
+  logout: () => request<{ message: string; details: string }>('/logout', { method: 'POST' }),
+  getProfile: (token: string, signal?: AbortSignal) => request<UserProfile>('/profile', { token, signal }),
+  getConnectors: (token: string, signal?: AbortSignal) => request<Connector[]>('/connectors', { token, signal }),
+  testConnector: (token: string, id: string) => request<GitHubTestResult>(`/connectors/${encodeURIComponent(id)}/test`, { method: 'POST', token, timeoutMs: 20000 }),
+  syncConnector: (token: string, id: string) => request<GitHubSyncResult>(`/connectors/${encodeURIComponent(id)}/sync`, { method: 'POST', token, timeoutMs: 60000 }),
+};
