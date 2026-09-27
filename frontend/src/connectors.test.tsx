@@ -11,12 +11,13 @@ function connector(type: string, status: string): Connector {
 }
 beforeEach(() => { sessionStorage.clear(); sessionStorage.setItem('ekos.session-token', 'connector-token'); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-function setup(list: () => Promise<Response>, test?: () => Promise<Response>) {
+function setup(list: () => Promise<Response>, test?: () => Promise<Response>, sync?: () => Promise<Response>) {
   const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
     expect((options?.headers as Record<string, string>).Authorization).toBe('Bearer connector-token');
     if (url.endsWith('/profile')) return Response.json(profile);
     if (url.endsWith('/connectors')) return list();
     if (url.endsWith('/test') && test) return test();
+    if (url.endsWith('/sync') && sync) return sync();
     throw new Error(`Unexpected endpoint ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -24,6 +25,23 @@ function setup(list: () => Promise<Response>, test?: () => Promise<Response>) {
   return fetchMock;
 }
 describe('connector availability and health', () => {
+  it.each(['Jira', 'Confluence', 'Slack'])('tests and syncs %s through generic actions and refreshes status', async type => {
+    let status = 'configured';
+    const fetchMock = setup(async () => Response.json([connector(type, status)]), async () => {
+      status = 'connected'; return Response.json({ status, connector: `Team ${type}` });
+    }, async () => {
+      status = 'synced'; return Response.json({ status: 'success', connector: `Team ${type}`, records_processed: 7, documents_indexed: 0, graph_nodes_updated: 0 });
+    });
+    const group = within(await screen.findByRole('group', { name: `Team ${type}` }));
+    fireEvent.click(group.getByRole('button', { name: 'Test connection' }));
+    await group.findByText('Connection verified.');
+    fireEvent.click(group.getByRole('button', { name: 'Sync' }));
+    await group.findByText(`Synced Team ${type}.`);
+    expect(group.getByText(/Processed 7 records/).textContent).toContain('Indexed 0 documents');
+    expect(group.queryByText(/Default branch:/)).toBeNull();
+    expect(group.queryByText(/undefined/)).toBeNull();
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/connectors'))).toHaveLength(3));
+  });
   it('renders real records, distinguishes health, and shows missing supported types', async () => {
     setup(async () => Response.json([connector('GitHub', 'connected'), connector('Jira', 'unhealthy'), connector('Confluence', 'configured')]));
     const github = within(await screen.findByRole('group', { name: 'Team GitHub' }));
@@ -31,8 +49,8 @@ describe('connector availability and health', () => {
     expect(github.getByRole('button', { name: 'Test connection' })).toHaveProperty('disabled', false);
     const jira = within(screen.getByRole('group', { name: 'Team Jira' }));
     expect(jira.getByText('Jira · Configured · Unhealthy')).toBeTruthy();
-    expect(jira.queryByRole('button')).toBeNull();
-    expect(jira.getByText('Test/sync unavailable in this backend.')).toBeTruthy();
+    expect(jira.getByRole('button', { name: 'Test connection' })).toHaveProperty('disabled', false);
+    expect(jira.getByRole('button', { name: 'Sync' })).toHaveProperty('disabled', false);
     expect(screen.getByText('Confluence · Configured · Not yet verified')).toBeTruthy();
     const slack = within(screen.getByRole('group', { name: 'Slack' }));
     expect(slack.getByText('Supported · Not configured')).toBeTruthy();

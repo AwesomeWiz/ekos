@@ -82,7 +82,7 @@ def test_connector(
     return connector_orchestration_service.test_connector_connection(db, _owned_connector(db, connector_id, current_user))
 
 
-@router.post("/{connector_id}/sync", response_model=ConnectorSyncResponse, response_model_exclude_none=True)
+@router.post("/{connector_id}/sync", response_model=ConnectorSyncResponse)
 def sync_connector(
     connector_id: str,
     db: Session = Depends(get_db),

@@ -1,7 +1,6 @@
 """Generic connector orchestration service for testing, syncing, and ingesting records."""
 
 from datetime import datetime, timezone
-import httpx
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -11,6 +10,7 @@ from schemas.connector import ConnectorTestResponse, ConnectorSyncResponse
 from schemas.ingestion import NormalizedRecord
 from services.ingestion_service import IngestionService
 from services import github_service
+from config.settings import settings
 
 _ingestion_service = IngestionService()
 
@@ -26,6 +26,21 @@ def _instantiate_registered_connector(connector: Connector):
 
     token = connector.configuration.encrypted_token if connector.configuration else ""
     api_url = connector.configuration.api_url if connector.configuration else ""
+    connector_type = connector.type.strip().lower()
+    if connector_type in {"jira", "confluence", "slack"}:
+        prefix = connector_type.upper()
+        token = token or getattr(settings, f"{prefix}_BOT_TOKEN" if connector_type == "slack" else f"{prefix}_API_TOKEN")
+        base_url = api_url or getattr(settings, f"{prefix}_API_URL" if connector_type == "slack" else f"{prefix}_URL")
+        if not token or not base_url:
+            raise HTTPException(status_code=409, detail=f"Configure {connector_type} credentials and API URL on the backend first.")
+        kwargs = {"token": token, "base_url": base_url}
+        if connector_type == "slack":
+            kwargs["channel_id"] = settings.SLACK_CHANNEL_ID or None
+        else:
+            kwargs["email"] = getattr(settings, f"{prefix}_EMAIL") or None
+            key = "project_key" if connector_type == "jira" else "space_key"
+            kwargs[key] = getattr(settings, f"{prefix}_{key.upper()}") or None
+        return connector_cls(**kwargs)
     try:
         return connector_cls(token=token, api_url=api_url)
     except TypeError:
@@ -40,18 +55,18 @@ def test_connector_connection(db: Session, connector: Connector) -> ConnectorTes
             return ConnectorTestResponse(**result)
         return result
 
-    instance = _instantiate_registered_connector(connector)
     try:
+        instance = _instantiate_registered_connector(connector)
         account_info = instance.test_connection()
         account_name = account_info.get("login") if isinstance(account_info, dict) else str(account_info)
     except Exception as error:
-        connector.status = "error"
+        connector.status = "not_configured" if isinstance(error, HTTPException) and error.status_code == 409 else "error"
         db.commit()
         if isinstance(error, HTTPException):
             raise error
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"{connector.name} test connection failed: {str(error)}",
+            detail=f"{connector.name} connection test failed. Check backend credentials, permissions, and connectivity.",
         ) from error
 
     connector.status = "connected"
@@ -94,19 +109,20 @@ def sync_connector_execution(db: Session, connector: Connector) -> ConnectorSync
             commits=res_dict.get("commits"),
             issues=res_dict.get("issues"),
             synced_at=res_dict.get("synced_at") or datetime.now(timezone.utc),
+            indexing=res_dict.get("indexing"),
         )
 
-    instance = _instantiate_registered_connector(connector)
     try:
+        instance = _instantiate_registered_connector(connector)
         raw_records = instance.sync()
     except Exception as error:
-        connector.status = "error"
+        connector.status = "not_configured" if isinstance(error, HTTPException) and error.status_code == 409 else "error"
         db.commit()
         if isinstance(error, HTTPException):
             raise error
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"{connector.name} sync failed: {str(error)}",
+            detail=f"{connector.name} sync failed. Check backend credentials, permissions, and connectivity.",
         ) from error
 
     normalized_records = []

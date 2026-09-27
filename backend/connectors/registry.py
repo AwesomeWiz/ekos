@@ -46,3 +46,11 @@ try:
     registry.register("github", GitHubConnector)
 except ImportError:
     pass
+
+from connectors.jira.connector import JiraConnector
+from connectors.confluence.connector import ConfluenceConnector
+from connectors.slack.connector import SlackConnector
+
+registry.register("jira", JiraConnector)
+registry.register("confluence", ConfluenceConnector)
+registry.register("slack", SlackConnector)
