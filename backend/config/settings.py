@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     CONFLUENCE_EMAIL: str = ""
     CONFLUENCE_API_TOKEN: str = ""
     CONFLUENCE_SPACE_KEY: str = ""
+    SLACK_API_URL: str = "https://slack.com/api"
+    SLACK_BOT_TOKEN: str = ""
+    SLACK_CHANNEL_ID: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
