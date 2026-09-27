@@ -74,3 +74,48 @@ class GitHubClient:
             return None
         response.raise_for_status()
         return response.json()
+
+    def get_docs(self, owner: str, repo: str):
+        response = httpx.get(
+            f"{self.BASE_URL}/repos/{owner}/{repo}/contents/docs",
+            headers=self._get_headers(),
+            timeout=10.0,
+        )
+
+        if response.status_code == 404:
+            return []
+
+        response.raise_for_status()
+
+        documents = []
+
+        for item in response.json():
+            if item.get("type") != "file":
+                continue
+
+            if not item.get("name", "").lower().endswith(".md"):
+                continue
+
+            file_response = httpx.get(
+                item["url"],
+                headers=self._get_headers(),
+                timeout=10.0,
+            )
+
+            file_response.raise_for_status()
+
+            file_data = file_response.json()
+
+            import base64
+
+            content = base64.b64decode(
+                file_data["content"]
+            ).decode("utf-8")
+
+            documents.append({
+                "name": item["name"],
+                "path": item["path"],
+                "content": content,
+            })
+
+        return documents

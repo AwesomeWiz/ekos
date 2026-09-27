@@ -1,5 +1,3 @@
-Put this in backend/graph/README.md:
-
 # EKOS Neo4j
 This module contains the Neo4j knowledge-graph service for EKOS.
 ## Local Setup

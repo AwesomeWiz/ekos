@@ -37,6 +37,10 @@ class GitHubConnector(BaseConnector):
                 self.owner,
                 self.repo,
             ),
+            "docs": self.client.get_docs(
+                self.owner,
+                self.repo
+            ),
         }
 
     def transform_data(self, data):
@@ -91,6 +95,14 @@ class GitHubConnector(BaseConnector):
             if data.get("readme")
             else None
         ),
+        "docs": [
+            {
+                "name": document["name"],
+                "path": document["path"],
+                "content": document["content"],
+            }
+            for document in data.get("docs", [])
+        ],
     }
 
     def sync(self):

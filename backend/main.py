@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, sessionmaker
+from api.knowledge import router as knowledge_router
 
 from config.settings import settings
 from models.base import engine, Base, SessionLocal
@@ -114,10 +115,10 @@ app.include_router(auth_router, prefix=settings.API_PREFIX)
 app.include_router(profile_router, prefix=settings.API_PREFIX)
 app.include_router(connectors_router, prefix=settings.API_PREFIX)
 app.include_router(chat_router, prefix=settings.API_PREFIX)
-
 app.include_router(search_router, prefix=settings.API_PREFIX)
 app.include_router(users_router, prefix=settings.API_PREFIX)
 app.include_router(graph_router, prefix=settings.API_PREFIX)
+app.include_router(knowledge_router)
 
 @app.get("/")
 def root():

@@ -2,11 +2,11 @@ import os
 
 from connectors.github.connector import GitHubConnector
 from graph.neo4j_service import Neo4jService
-from graph.github_ingestion import GitHubNeo4jIngestion
+from knowledge.ingestion import KnowledgeIngestionService
+from knowledge.normalizers import normalize_connector_data
 
 
 def main():
-
     token = os.getenv("GITHUB_TOKEN")
     owner = os.getenv("GITHUB_OWNER")
     repo = os.getenv("GITHUB_REPO")
@@ -21,32 +21,32 @@ def main():
     )
 
     print("Fetching GitHub data...")
-
     data = connector.sync()
 
-    print(
-        f"Repository: {data['repository']['full_name']}"
+    print(f"Repository: {data['repository']['full_name']}")
+    print(f"Commits: {len(data.get('commits', []))}")
+    print(f"Issues: {len(data.get('issues', []))}")
+
+    records = normalize_connector_data(
+        data,
+        connector="github",
     )
 
     print(
-        f"Commits: {len(data.get('commits', []))}"
-    )
-
-    print(
-        f"Issues: {len(data.get('issues', []))}"
+        f"Normalized: {len(records['entities'])} entities, "
+        f"{len(records['relationships'])} relationships, "
+        f"{len(records['documents'])} documents"
     )
 
     neo4j = Neo4jService()
+    ingestion = KnowledgeIngestionService(neo4j=neo4j)
 
-    print("Connected to Neo4j.")
+    print("Ingesting knowledge...")
+    ingestion.ingest(records)
 
-    ingestion = GitHubNeo4jIngestion(neo4j)
+    print("Knowledge ingestion completed.")
 
-    ingestion.ingest(data)
-
-    print("GitHub data successfully stored in Neo4j.")
-
-    neo4j.close()
+    ingestion.close()
 
 
 if __name__ == "__main__":
