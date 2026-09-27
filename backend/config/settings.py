@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     JIRA_EMAIL: str = ""
     JIRA_API_TOKEN: str = ""
     JIRA_PROJECT_KEY: str = ""
+    CONFLUENCE_URL: str = ""
+    CONFLUENCE_EMAIL: str = ""
+    CONFLUENCE_API_TOKEN: str = ""
+    CONFLUENCE_SPACE_KEY: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
