@@ -15,6 +15,9 @@ from auth.security import hash_password
 from api.auth import router as auth_router
 from api.profile import router as profile_router
 from api.connectors import router as connectors_router
+from api.chat import router as chat_router
+from services.demo_seed import seed_demo
+
 
 def init_db(target_engine=None):
     """Create database tables and seed initial default data."""
@@ -71,6 +74,7 @@ def init_db(target_engine=None):
             db.add(admin_user)
 
         db.commit()
+        seed_demo(db, include_connector=False)
     except Exception as e:
         db.rollback()
         print(f"Error seeding database: {e}")
@@ -106,6 +110,8 @@ app.add_middleware(
 app.include_router(auth_router, prefix=settings.API_PREFIX)
 app.include_router(profile_router, prefix=settings.API_PREFIX)
 app.include_router(connectors_router, prefix=settings.API_PREFIX)
+app.include_router(chat_router, prefix=settings.API_PREFIX)
+
 
 @app.get("/")
 def root():

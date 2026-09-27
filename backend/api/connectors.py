@@ -3,11 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from models.base import get_db
 from models.user import User
-from schemas.connector import ConnectorCreate, ConnectorUpdate, ConnectorRead, GitHubTestResponse, GitHubSyncResponse
+from schemas.connector import ConnectorCreate, ConnectorUpdate, ConnectorRead, ConnectorTestResponse, ConnectorSyncResponse
 from auth.dependencies import require_permission
-from services import connector_service, github_service
+from services import connector_service, connector_orchestration_service
 
 router = APIRouter(prefix="/connectors", tags=["Connectors"])
+
+
 
 @router.get("", response_model=List[ConnectorRead])
 def list_connectors(
@@ -70,21 +72,24 @@ def _owned_connector(db: Session, connector_id: str, current_user: User):
     return connector
 
 
-@router.post("/{connector_id}/test", response_model=GitHubTestResponse)
+@router.post("/{connector_id}/test", response_model=ConnectorTestResponse, response_model_exclude_none=True)
 def test_connector(
     connector_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("connectors", "test")),
 ):
-    """Check the server-configured GitHub token through the existing connector."""
-    return github_service.test_github_connection(db, _owned_connector(db, connector_id, current_user))
+    """Check the configured connector through the generic connector dispatcher."""
+    return connector_orchestration_service.test_connector_connection(db, _owned_connector(db, connector_id, current_user))
 
 
-@router.post("/{connector_id}/sync", response_model=GitHubSyncResponse)
+@router.post("/{connector_id}/sync", response_model=ConnectorSyncResponse, response_model_exclude_none=True)
 def sync_connector(
     connector_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("connectors", "sync")),
 ):
-    """Fetch and transform the configured repository with GitHubConnector.sync()."""
-    return github_service.sync_github_connector(db, _owned_connector(db, connector_id, current_user))
+    """Fetch, transform, and index connector data through generic ingestion orchestrator."""
+    return connector_orchestration_service.sync_connector_execution(db, _owned_connector(db, connector_id, current_user))
+
+
+
