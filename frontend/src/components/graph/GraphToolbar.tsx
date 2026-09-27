@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { ListFilter, Network, RotateCcw, Search } from 'lucide-react';
-import type { EntityType } from '../../data/demoData';
 
-export const graphTypes: EntityType[] = ['Service', 'Technology', 'Person', 'Jira Issue', 'Document', 'GitHub Repository'];
+export const graphTypes = ['Person', 'Commit', 'GitHub Repository'];
 interface GraphToolbarProps {
   query: string; onQuery: (value: string) => void;
-  types: EntityType[]; onTypes: (value: EntityType[]) => void;
+  types: string[]; onTypes: (value: string[]) => void;
   hops: number; onHops: (value: number) => void;
   onReset: () => void;
 }

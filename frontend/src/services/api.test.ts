@@ -24,6 +24,17 @@ describe('actual backend API contracts', () => {
     await api.getSearchStatus('token');
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8000/api/search/status', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token' }) }));
   });
+  it('posts authenticated chat and allows time for local model generation', async () => {
+    vi.useFakeTimers();
+    let complete!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>(resolve => { complete = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+    const pending = api.chat('token', 'Hello');
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(fetchMock.mock.calls[0]).toEqual(['http://127.0.0.1:8000/api/chat', expect.objectContaining({ method: 'POST', body: JSON.stringify({ message: 'Hello' }), headers: expect.objectContaining({ Authorization: 'Bearer token' }), signal: expect.objectContaining({ aborted: false }) })]);
+    complete(Response.json({ answer: 'Hello', sources: [], graph_context: [] }));
+    expect(await pending).toEqual({ answer: 'Hello', sources: [], graph_context: [] });
+  });
   it('notifies session expiration only for protected requests', async () => {
     const listener = vi.fn(); window.addEventListener(SESSION_EXPIRED_EVENT, listener);
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({}, { status: 401 })));

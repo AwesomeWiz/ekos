@@ -23,7 +23,13 @@ class ChatSource(BaseModel):
     snippet: str
 
 
+class GraphRelationship(BaseModel):
+    source: str
+    relationship: str
+    target: str
+
+
 class ChatResponse(BaseModel):
     answer: str
     sources: list[ChatSource] = Field(default_factory=list)
-    graph_context: list = Field(default_factory=list)
+    graph_context: list[GraphRelationship] = Field(default_factory=list)

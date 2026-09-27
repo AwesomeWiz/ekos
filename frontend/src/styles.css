@@ -176,6 +176,16 @@ h1 { font-family: var(--font-display); font-weight: 500; font-size: 2.125rem; li
 /* Keep the existing live graph count accessible without adding a reference-absent footer. */
 .graph-bottom-bar { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .graph-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 1.875rem; font-size: .8125rem; color: var(--color-muted); }
+.readable-graph { overflow: auto; }
+.interactive-graph { overflow: hidden; touch-action: none; cursor: grab; user-select: none; }
+.interactive-graph.dragging, .interactive-graph.dragging .graph-node { cursor: grabbing; }
+.interactive-graph .graph-node { touch-action: none; }
+.graph-zoom-controls { position: absolute; top: 14px; right: 24px; display: flex; align-items: center; gap: 8px; z-index: 3; cursor: default; }
+.graph-zoom-controls .toolbar-button { width: 36px; padding: 0; }
+.readable-graph .graph-canvas { min-width: 760px; min-height: 580px; }
+.readable-graph .node-document { gap: 4px; padding: 8px 6px; }
+.readable-graph .node-document .node-copy { width: 100%; }
+.readable-graph .node-document .node-name { max-width: 100%; white-space: normal; line-height: 1.2; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .app-shell:has(.graph-page) .right-panel { padding: 4.625rem .8125rem 1.75rem; }
 .entity-details { padding: 1rem; }
 .entity-detail-heading { display: flex; align-items: center; gap: .875rem; }
@@ -347,6 +357,9 @@ h1 { font-family: var(--font-display); font-weight: 500; font-size: 2.125rem; li
 .login-form { display: grid; gap: 18px; margin: 28px 0 20px; }
 .login-form label { display: grid; gap: 8px; font-size: 14px; }
 .login-form input { width: 100%; height: 44px; padding: 10px 12px; background: var(--color-card); border: 1px solid var(--color-border); border-radius: 7px; }
+.users-page .login-form select { width: 100%; height: 44px; padding: 10px 12px; background: var(--color-card); border: 1px solid var(--color-border); border-radius: 7px; }
+.users-page > h2 { margin: 24px 0 14px; }
+.users-page .account-card { margin-bottom: 14px; }
 .login-form .primary-button { margin: 0; }
 .login-form .primary-button::before { display: none; }
 .connectors-page { width: 100%; max-width: 680px; margin: 0 auto; padding: 40px 28px; }

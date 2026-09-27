@@ -7,6 +7,7 @@ import { AppShell } from './components/layout/AppShell';
 import { Link } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { AccountPage } from './pages/AccountPage';
+import { UsersPage } from './pages/UsersPage';
 import { AuthProvider } from './hooks/useAuth';
 import { ChatProvider } from './hooks/useChat';
 import { ConnectorsProvider } from './hooks/useConnectors';
@@ -18,6 +19,7 @@ export function App() {
     <Route path="/chat/:conversationId" element={<ChatPage />} />
     <Route path="/login" element={<LoginPage />} />
     <Route path="/account" element={<AccountPage />} />
+    <Route path="/admin/users" element={<UsersPage />} />
     <Route path="/knowledge-graph" element={<KnowledgeGraphPage />} />
     <Route path="/connectors" element={<ConnectorsPage />} />
     <Route path="*" element={<AppShell><div className="empty-page"><h1>Page not found</h1><Link className="text-link" to="/">Start a new chat →</Link></div></AppShell>} />

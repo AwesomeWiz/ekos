@@ -8,6 +8,7 @@ from auth.security import decode_access_token
 
 security_scheme = HTTPBearer()
 
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     db: Session = Depends(get_db)
@@ -46,6 +47,13 @@ def get_current_user(
         )
         
     return user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Use the current persisted role, never the role claim in a JWT."""
+    if not current_user.role or current_user.role.role_name != "Administrator":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
+    return current_user
 
 
 def require_permission(resource: str, action: str):

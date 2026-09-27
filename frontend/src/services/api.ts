@@ -12,6 +12,22 @@ export interface GitHubSyncResult { status: string; connector: string; repositor
 export interface SearchResult { document_id: string; text: string; metadata: Record<string, string | number | boolean>; distance: number }
 export interface SearchResponse { query: string; results: SearchResult[]; document_count: number }
 export interface SearchStatus { collection: string; document_count: number; embedding_model: string }
+export interface ManagedUser { id: string; full_name: string; email: string; role_id: string | null; organization_id: string | null; status: boolean; created_at: string }
+export interface UserRole { id: string; role_name: string }
+export interface GraphNodeData { id: string; name: string; type: string; description: string }
+export interface GraphEdgeData { source: string; target: string; relationship: string }
+export interface GraphResponse { nodes: GraphNodeData[]; edges: GraphEdgeData[] }
+interface GraphApiResponse { nodes: { id: string; label: string; type: 'User' | 'Commit' | 'Repository' | 'Issue'; description?: string }[]; edges: GraphEdgeData[] }
+const graphDisplayTypes = { User: 'Person', Commit: 'Commit', Repository: 'GitHub Repository', Issue: 'Jira Issue' };
+
+export interface NewUser { full_name: string; email: string; password: string; role_id: string }
+
+export interface ChatSource { title?: string | null; source?: string | null; connector?: string | null; entity_type?: string | null; type?: string | null; url?: string | null; repository?: string | null; snippet: string }
+export interface GraphRelationship { source: string; relationship: string; target: string }
+export interface ChatResponse { answer: string; sources: ChatSource[]; graph_context: GraphRelationship[] }
+export function chatSourceUrl(source: ChatSource): string | undefined {
+  return sourceUrl({ document_id: '', text: '', distance: 0, metadata: { url: source.url || '' } });
+}
 
 export function sourceUrl(result: SearchResult): string | undefined {
   const value = result.metadata.url;
@@ -27,7 +43,7 @@ const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').r
 const prefix = (import.meta.env.VITE_API_PREFIX || '/api').replace(/\/$/, '');
 export const SESSION_EXPIRED_EVENT = 'ekos:session-expired';
 
-interface RequestOptions { method?: 'GET' | 'POST'; body?: unknown; token?: string; signal?: AbortSignal; timeoutMs?: number }
+interface RequestOptions { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; token?: string; signal?: AbortSignal; timeoutMs?: number }
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const controller = new AbortController();
   let timedOut = false;
@@ -62,6 +78,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
+  getGraph: (token: string, signal?: AbortSignal) => request<GraphApiResponse>('/graph', { token, signal, timeoutMs: 15000 }).then(response => ({
+    nodes: response.nodes.map(node => ({ id: node.id, name: node.label, type: graphDisplayTypes[node.type], description: node.description || '' })),
+    edges: response.edges,
+  })),
+  getUsers: (token: string, signal?: AbortSignal) => request<ManagedUser[]>('/users', { token, signal }),
+  getUserRoles: (token: string, signal?: AbortSignal) => request<UserRole[]>('/users/roles', { token, signal }),
+  createUser: (token: string, body: NewUser, signal?: AbortSignal) => request<ManagedUser>('/users', { method: 'POST', token, body, signal }),
+  updateUser: (token: string, id: string, body: { role_id?: string; status?: boolean }, signal?: AbortSignal) => request<ManagedUser>(`/users/${encodeURIComponent(id)}`, { method: 'PUT', token, body, signal }),
+  chat: (token: string, message: string, signal?: AbortSignal) => request<ChatResponse>('/chat', { method: 'POST', token, body: { message }, signal, timeoutMs: 180000 }),
   login: (email: string, password: string) => request<TokenResponse>('/login', { method: 'POST', body: { email, password } }),
   logout: () => request<{ message: string; details: string }>('/logout', { method: 'POST' }),
   getProfile: (token: string, signal?: AbortSignal) => request<UserProfile>('/profile', { token, signal }),

@@ -3,11 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from './App';
-import type { SearchResponse, SearchResult } from './services/api';
-
 const profile = { id: 'search-user', full_name: 'Test Developer', email: 'dev@example.test', role: 'Developer', organization: 'Team', permissions: [{ resource: 'connectors', action: 'read' }] };
-const result: SearchResult = { document_id: 'github:org:connector:team/demo:commit:abc123', text: 'Actual repository change: add Redis caching.', distance: 0.12,
-  metadata: { source: 'github', repository: 'team/demo', entity_type: 'commit', entity_id: 'abc123', title: 'Add Redis caching', url: 'https://github.com/team/demo/commit/abc123' } };
+const source = { title: 'Add Redis caching', source: 'github', repository: 'team/demo', entity_type: 'commit', url: 'https://github.com/team/demo/commit/abc123', snippet: 'Actual repository change: add Redis caching.' };
+const response = { answer: 'Redis reduces database load.', sources: [source, source], graph_context: [{ source: 'Developer', relationship: 'COMMITTED', target: 'abc123' }] };
 beforeEach(() => { sessionStorage.clear(); sessionStorage.setItem('ekos.session-token', 'search-token'); Element.prototype.scrollIntoView = vi.fn(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 function setup(search: () => Promise<Response>) {
@@ -16,7 +14,7 @@ function setup(search: () => Promise<Response>) {
     expect((options?.headers as Record<string, string>).Authorization).toBe('Bearer search-token');
     if (url.endsWith('/profile')) return Response.json(profile);
     if (url.endsWith('/connectors')) return Response.json([]);
-    if (url.endsWith('/search')) return search();
+    if (url.endsWith('/chat')) return search();
     throw new Error(`Unexpected endpoint ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -31,71 +29,64 @@ function submit(query: string, placeholder = 'Ask EKOS anything...') {
   fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 }
 
-describe('semantic retrieval chat', () => {
-  it('sends the actual query, shows loading, renders real snippets and deduplicated context sources', async () => {
+describe('backend chat', () => {
+  it('posts the message with JWT, shows thinking, then renders answer and deduplicated source context', async () => {
     let finish!: (response: Response) => void;
     const fetchMock = setup(() => new Promise(resolve => { finish = resolve; }));
-    await openRoute();
-    submit('Why was Redis introduced?');
+    await openRoute(); submit('Why was Redis introduced?');
     expect(within(screen.getByLabelText('Conversation')).getByText('Why was Redis introduced?')).toBeTruthy();
-    expect(screen.getByText('Searching indexed knowledge…')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('Thinking');
     expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', true);
-    const response: SearchResponse = { query: 'Why was Redis introduced?', document_count: 4, results: [result, { ...result, document_id: `${result.document_id}:chunk:1`, text: 'Second chunk of this real commit.' }] };
     finish(Response.json(response));
-    await screen.findByRole('heading', { name: 'Retrieved knowledge' });
-    expect(screen.getByText(result.text)).toBeTruthy();
+    await screen.findByText(response.answer);
+    expect(screen.getAllByText(source.snippet)).toHaveLength(2);
     const context = within(screen.getByRole('complementary', { name: 'Conversation context' }));
     expect(context.getAllByRole('link', { name: /Add Redis caching/ })).toHaveLength(1);
-    expect(context.getByText('GitHub commit · team/demo')).toBeTruthy();
     expect(screen.queryByText('PAY-42')).toBeNull();
-    expect(screen.queryByText('Architecture.md')).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8000/api/search', expect.objectContaining({ method: 'POST', body: JSON.stringify({ query: 'Why was Redis introduced?', top_k: 5 }) }));
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8000/api/chat', expect.objectContaining({ method: 'POST', body: JSON.stringify({ message: 'Why was Redis introduced?' }), headers: expect.objectContaining({ Authorization: 'Bearer search-token' }) }));
+    expect(screen.getByRole('textbox', { name: 'Ask a follow-up...' })).toHaveProperty('maxLength', 2000);
   });
-
-  it('stores retrieval history and submits follow-ups without rerunning completed searches', async () => {
-    const fetchMock = setup(async () => Response.json({ query: 'Redis', results: [result], document_count: 1 }));
-    await openRoute();
-    submit('Redis');
-    await screen.findByText(result.text);
+  it('persists answers and graph context, submits follow-ups, and restores without repeating requests', async () => {
+    const fetchMock = setup(async () => Response.json(response));
+    await openRoute(); submit('Redis'); await screen.findByText(response.answer);
     submit('Repository branches', 'Ask a follow-up...');
-    await waitFor(() => expect(screen.getAllByText(result.text)).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText(response.answer)).toHaveLength(2));
     const saved = JSON.parse(sessionStorage.getItem('ekos.chats.search-user')!);
-    const route = `/chat/${saved[0].id}`;
-    cleanup();
-    await openRoute(route);
-    expect(screen.getAllByText(result.text)).toHaveLength(2);
-    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/search'))).toHaveLength(2);
+    expect(saved[0].turns[0].graphContext).toEqual(response.graph_context);
+    cleanup(); await openRoute(`/chat/${saved[0].id}`);
+    expect(screen.getAllByText(response.answer)).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/chat'))).toHaveLength(2);
   });
-
-  it('keeps previously stored fixture answers labeled as samples', async () => {
-    const fetchMock = setup(async () => { throw new Error('A completed sample must not trigger search'); });
-    sessionStorage.setItem('ekos.chats.search-user', JSON.stringify([{ id: 'legacy', title: 'Old sample', turns: [{ id: 'old-turn', question: 'Old question', answer: 'Previously saved sample answer.', sourceIds: ['issue'], relatedIds: [] }] }]));
+  it('disables legacy sample histories', async () => {
+    setup(async () => { throw new Error('No request expected'); });
+    sessionStorage.setItem('ekos.chats.search-user', JSON.stringify([{ id: 'legacy', title: 'Old sample', turns: [{ id: 'old', question: 'Old question', answer: 'Fake answer', sourceIds: ['issue'], relatedIds: [] }] }]));
     await openRoute('/chat/legacy');
-    expect(screen.getByText('Sample conversation')).toBeTruthy();
-    expect(screen.getByText('Previously saved sample answer.')).toBeTruthy();
-    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/search'))).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Conversation not found' })).toBeTruthy();
+    expect(screen.queryByText('Fake answer')).toBeNull();
   });
-
-  it('shows the empty-index message and connector link without sample references', async () => {
-    setup(async () => Response.json({ query: 'Redis', results: [], document_count: 0 }));
-    await openRoute(); submit('Redis');
-    await screen.findByText('No indexed knowledge is available yet. Sync the GitHub connector first.');
-    expect(screen.getByRole('link', { name: 'Open Connectors →' }).getAttribute('href')).toBe('/connectors');
-    expect(screen.queryByRole('heading', { name: 'Sample context' })).toBeNull();
+  it('renders an answer without sources or graph results', async () => {
+    setup(async () => Response.json({ answer: 'Information was not found.', sources: [], graph_context: [] }));
+    await openRoute(); submit('Unknown'); await screen.findByText('Information was not found.');
+    expect(screen.queryByRole('heading', { name: 'Sources' })).toBeNull();
+    expect(screen.getByText('No retrieved sources.')).toBeTruthy();
   });
-
-  it('shows a no-match message when a populated index returns no results', async () => {
-    setup(async () => Response.json({ query: 'Redis', results: [], document_count: 4 }));
+  it.each([503, 403])('shows HTTP %s errors and allows another question', async status => {
+    setup(async () => Response.json({ detail: 'Ollama is unavailable.' }, { status }));
     await openRoute(); submit('Redis');
-    await screen.findByText('No indexed knowledge matched this query.');
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', status === 403 ? 'Your account does not have access to this resource.' : 'Ollama is unavailable.');
+    expect(screen.queryByText(response.answer)).toBeNull();
+    submit('Retry', 'Ask a follow-up...');
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2));
   });
-
-  it('shows API failures without substituting a sample answer', async () => {
-    setup(async () => Response.json({ detail: 'Knowledge search is unavailable.' }, { status: 503 }));
+  it('shows a network failure', async () => {
+    setup(async () => { throw new TypeError('offline'); });
     await openRoute(); submit('Redis');
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Knowledge search is unavailable.');
-    expect(screen.queryByText('PAY-42')).toBeNull();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Ask a follow-up...' }), { target: { value: 'Retry search' } });
-    expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', false);
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Unable to reach the EKOS backend.');
+  });
+  it('expires the existing auth session on a chat 401', async () => {
+    setup(async () => Response.json({ detail: 'expired' }, { status: 401 }));
+    await openRoute(); submit('Redis');
+    await screen.findByText('Your session has expired. Please sign in again.');
+    expect(sessionStorage.getItem('ekos.session-token')).toBeNull();
   });
 });

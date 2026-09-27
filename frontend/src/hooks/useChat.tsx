@@ -1,35 +1,29 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { demoAnswer, demoQuestion, entities, type EntityId } from '../data/demoData';
 import { useAuth } from './useAuth';
-import { api, type SearchResult } from '../services/api';
+import { api, type ChatSource, type GraphRelationship } from '../services/api';
 
 export interface ChatTurn {
-  id: string; question: string; answer: string | null; sourceIds: EntityId[]; relatedIds: EntityId[];
-  mode?: 'sample' | 'retrieval' | 'empty-index' | 'no-results' | 'error' | 'sign-in'; results?: SearchResult[];
+  id: string; question: string; answer: string | null;
+  mode: 'chat' | 'error' | 'sign-in'; sources: ChatSource[]; graphContext: GraphRelationship[];
 }
 export interface Conversation { id: string; title: string; turns: ChatTurn[]; example?: boolean }
 interface ChatContextValue { conversations: Conversation[]; startChat: (question: string) => void; sendFollowUp: (id: string, question: string) => void }
 const ChatContext = createContext<ChatContextValue | null>(null);
-function seedConversation(): Conversation {
-  return { id: 'redis', title: 'Why was redis introduced?', example: true, turns: [{ id: 'redis-example', question: demoQuestion, answer: demoAnswer.join('\n\n'), sourceIds: ['issue', 'document', 'repository'], relatedIds: ['payment', 'redis', 'issue'] }] };
-}
 function isTurn(value: unknown): value is ChatTurn {
   if (!value || typeof value !== 'object') return false;
   const turn = value as ChatTurn;
   return typeof turn.id === 'string' && typeof turn.question === 'string' && (typeof turn.answer === 'string' || turn.answer === null)
-    && [turn.sourceIds, turn.relatedIds].every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string' && Object.hasOwn(entities, id)))
-    && (turn.mode === undefined || ['sample', 'retrieval', 'empty-index', 'no-results', 'error', 'sign-in'].includes(turn.mode))
-    && (turn.results === undefined || (Array.isArray(turn.results) && turn.results.every(result => typeof result.document_id === 'string' && typeof result.text === 'string' && typeof result.distance === 'number' && result.metadata && typeof result.metadata === 'object')));
+    && ['chat', 'error', 'sign-in'].includes(turn.mode)
+    && Array.isArray(turn.sources) && turn.sources.every(source => source && typeof source.snippet === 'string')
+    && Array.isArray(turn.graphContext) && turn.graphContext.every(edge => edge && [edge.source, edge.relationship, edge.target].every(value => typeof value === 'string'));
 }
 function readConversations(key: string): Conversation[] {
   try {
     const value: unknown = JSON.parse(sessionStorage.getItem(key) || 'null');
-    if (Array.isArray(value) && value.every(item => item && typeof item.id === 'string' && typeof item.title === 'string' && Array.isArray(item.turns) && item.turns.every(isTurn))) {
-      return value.slice(0, 50).map(chat => ({ ...chat, turns: chat.turns.map((turn: ChatTurn) => ({ ...turn, mode: turn.mode || 'sample' })) }));
-    }
-  } catch { /* Corrupt or unavailable browser storage must not break the demo. */ }
-  return [seedConversation()];
+    if (Array.isArray(value)) return value.filter(item => item && !item.example && typeof item.id === 'string' && typeof item.title === 'string' && Array.isArray(item.turns) && item.turns.every(isTurn)).slice(0, 50);
+  } catch { /* Unavailable or old sample history must not break chat. */ }
+  return [];
 }
 
 function SessionChats({ children, storageKey }: { children: ReactNode; storageKey: string }) {
@@ -53,20 +47,18 @@ function SessionChats({ children, storageKey }: { children: ReactNode; storageKe
         if (!controller.signal.aborted) setConversations(chats => chats.map(item => ({ ...item, turns: item.turns.map(value => value.id === turn.id ? { ...value, ...update } : value) })));
       };
       if (!token) {
-        finish({ mode: 'sign-in', answer: 'Sign in to search your indexed knowledge.', results: [] });
+        finish({ mode: 'sign-in', answer: 'Sign in to chat with your indexed knowledge.', sources: [], graphContext: [] });
         requests.current.delete(turn.id);
         continue;
       }
-      void api.semanticSearch(token, turn.question, 5, controller.signal).then(response => {
-        if (response.document_count === 0) finish({ mode: 'empty-index', answer: 'No indexed knowledge is available yet. Sync the GitHub connector first.', results: [] });
-        else if (!response.results.length) finish({ mode: 'no-results', answer: 'No indexed knowledge matched this query.', results: [] });
-        else finish({ mode: 'retrieval', answer: 'EKOS found the following relevant knowledge:', results: response.results });
+      void api.chat(token, turn.question, controller.signal).then(response => {
+        finish({ mode: 'chat', answer: response.answer, sources: response.sources, graphContext: response.graph_context || [] });
       }).catch(reason => {
-        finish({ mode: 'error', answer: reason instanceof Error ? reason.message : 'Knowledge search could not be completed.', results: [] });
+        finish({ mode: 'error', answer: reason instanceof Error ? reason.message : 'Chat could not be completed.', sources: [], graphContext: [] });
       }).finally(() => { if (requests.current.get(turn.id) === controller) requests.current.delete(turn.id); });
     }
   }, [conversations, token]);
-  const pendingTurn = (question: string): ChatTurn => ({ id: crypto.randomUUID(), question, answer: null, sourceIds: [], relatedIds: [], mode: 'retrieval', results: [] });
+  const pendingTurn = (question: string): ChatTurn => ({ id: crypto.randomUUID(), question, answer: null, mode: 'chat', sources: [], graphContext: [] });
   const startChat = (question: string) => {
     if (!question.trim()) return;
     const id = crypto.randomUUID();

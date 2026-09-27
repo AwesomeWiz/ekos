@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { App } from './App';
-import { demoAnswer } from './data/demoData';
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -47,72 +46,49 @@ describe('complete demo flows', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('preserves the explicitly labeled sample conversation and its citations', async () => {
+  it('does not seed a fake conversation', () => {
     openRoute('/chat/redis');
-    expect(screen.getByText('Sample conversation')).toBeTruthy();
-    expect(screen.getByText(demoAnswer[0])).toBeTruthy();
-    fireEvent.click(screen.getByRole('link', { name: '[1] PAY-42' }));
-    expect(within(screen.getByRole('complementary', { name: 'Selected entity details' })).getByRole('heading', { name: 'PAY-42' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Conversation not found' })).toBeTruthy();
+    expect(screen.queryByText('Sample conversation')).toBeNull();
   });
 
   it('preserves follow-ups, switches history, and restores after remount', async () => {
     openRoute();
     submit('Explain Redis caching');
-    await screen.findByText('Sign in to search your indexed knowledge.');
+    await screen.findByText('Sign in to chat with your indexed knowledge.');
     const route = screen.getByTestId('route').textContent!;
     submit('Who works on this service?', 'Ask a follow-up...');
-    await waitFor(() => expect(screen.getAllByText('Sign in to search your indexed knowledge.')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('Sign in to chat with your indexed knowledge.')).toHaveLength(2));
     fireEvent.click(screen.getByRole('link', { name: 'New chat' }));
     expect((screen.getByRole('textbox', { name: 'Ask EKOS anything...' }) as HTMLTextAreaElement).value).toBe('');
     submit('What is the weather?');
-    await screen.findByText('Sign in to search your indexed knowledge.');
+    await screen.findByText('Sign in to chat with your indexed knowledge.');
     expect(screen.queryByRole('heading', { name: 'Sample context' })).toBeNull();
     fireEvent.click(screen.getByRole('link', { name: 'Explain Redis caching' }));
     expect(screen.getByText('Who works on this service?')).toBeTruthy();
     cleanup();
     openRoute(route);
     expect(screen.getByText('Who works on this service?')).toBeTruthy();
-    expect(screen.getAllByText('Sign in to search your indexed knowledge.')).toHaveLength(2);
+    expect(screen.getAllByText('Sign in to chat with your indexed knowledge.')).toHaveLength(2);
   });
 
   it('sends suggested questions automatically and supports Enter submission', async () => {
     openRoute();
     fireEvent.click(screen.getByRole('button', { name: 'Who owns the payment service?' }));
-    await screen.findByText('Sign in to search your indexed knowledge.');
+    await screen.findByText('Sign in to chat with your indexed knowledge.');
     expect(within(screen.getByLabelText('Conversation')).getByText('Who owns the payment service?')).toBeTruthy();
     const input = screen.getByRole('textbox', { name: 'Ask a follow-up...' });
     fireEvent.change(input, { target: { value: 'Find architecture docs' } });
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
     expect(within(screen.getByLabelText('Conversation')).queryByText('Find architecture docs')).toBeNull();
     fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(screen.getAllByText('Sign in to search your indexed knowledge.')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('Sign in to chat with your indexed knowledge.')).toHaveLength(2));
   });
 
-  it('selects, searches, filters, applies hops, resets, and asks about an entity', async () => {
+  it('requires sign-in to view real graph data without showing sample entities', () => {
     openRoute('/knowledge-graph');
-    const graph = screen.getByRole('group', { name: 'Payment Service knowledge graph' });
-    expect(within(graph).getAllByRole('button')).toHaveLength(7);
-    fireEvent.click(screen.getByRole('button', { name: 'Redis, Technology' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Relationship hops' }), { target: { value: '1' } });
-    expect(within(graph).getAllByRole('button')).toHaveLength(2);
-    fireEvent.change(screen.getByRole('combobox', { name: 'Relationship hops' }), { target: { value: '2' } });
-    expect(within(graph).getAllByRole('button')).toHaveLength(7);
-    fireEvent.change(screen.getByRole('combobox', { name: 'Relationship hops' }), { target: { value: '3' } });
-    expect(within(graph).getAllByRole('button')).toHaveLength(7);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Search the knowledge graph' }), { target: { value: 'redis' } });
-    expect(within(graph).getAllByRole('button')).toHaveLength(1);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Search the knowledge graph' }), { target: { value: 'missing entity' } });
-    expect(within(graph).getByRole('status').textContent).toContain('No matching entities');
-    fireEvent.click(screen.getByRole('button', { name: 'Reset view' }));
-    expect(screen.getByRole('button', { name: 'Payment Service, Service' }).getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'GitHub Repository' }));
-    expect(within(graph).getAllByRole('button')).toHaveLength(6);
-    fireEvent.click(screen.getByRole('button', { name: 'Redis, Technology' }));
-    expect(within(screen.getByRole('complementary', { name: 'Selected entity details' })).getByRole('heading', { name: 'Redis' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Ask EKOS about this' }));
-    expect(within(screen.getByLabelText('Conversation')).getByText('Tell me about Redis.')).toBeTruthy();
-    await screen.findByText('Sign in to search your indexed knowledge.');
+    expect(screen.getByText('Sign in to view the knowledge graph.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Payment Service, Service' })).toBeNull();
   });
 
   it('loads API connector statuses, refreshes them, and signs out', async () => {
@@ -215,6 +191,6 @@ describe('complete demo flows', () => {
     openRoute('/chat/missing');
     expect(screen.getByRole('heading', { name: 'Conversation not found' })).toBeTruthy();
     cleanup(); openRoute('/knowledge-graph?entity=__proto__');
-    expect(screen.getByRole('button', { name: 'Payment Service, Service' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Sign in to view the knowledge graph.')).toBeTruthy();
   });
 });

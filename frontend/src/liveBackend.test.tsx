@@ -36,7 +36,7 @@ describe.skipIf(!env.EKOS_TEST_EMAIL || !env.EKOS_TEST_PASSWORD)('running FastAP
     expect(sessionStorage.getItem('ekos.session-token')).toBeNull();
     expect(await screen.findByText('Sign in to view your connected sources.')).toBeTruthy();
   }, 30000);
-  it.skipIf(env.EKOS_TEST_LIVE_SEARCH !== '1')('renders actual indexed GitHub results from Developer semantic search', async () => {
+  it.skipIf(env.EKOS_TEST_LIVE_SEARCH !== '1')('renders a real chat answer and indexed GitHub sources', async () => {
     render(<MemoryRouter initialEntries={['/login']}><App /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: env.EKOS_TEST_EMAIL } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: env.EKOS_TEST_PASSWORD } });
@@ -47,7 +47,7 @@ describe.skipIf(!env.EKOS_TEST_EMAIL || !env.EKOS_TEST_PASSWORD)('running FastAP
     fireEvent.click(screen.getByRole('link', { name: 'New chat' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Ask EKOS anything...' }), { target: { value: 'repository branches' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-    await screen.findByRole('heading', { name: 'Retrieved knowledge' }, { timeout: 120000 });
+    await screen.findByRole('heading', { name: 'Sources' }, { timeout: 180000 });
     const sources = within(screen.getByRole('complementary', { name: 'Conversation context' }));
     expect(sources.getAllByRole('link').length).toBeGreaterThan(0);
     expect(sources.queryByText('PAY-42')).toBeNull();
@@ -55,5 +55,5 @@ describe.skipIf(!env.EKOS_TEST_EMAIL || !env.EKOS_TEST_PASSWORD)('running FastAP
     const results = await api.semanticSearch(token, 'repository branches');
     expect(results.results.length).toBeGreaterThan(0);
     expect(results.results.every(result => result.metadata.source === 'github')).toBe(true);
-  }, 150000);
+  }, 210000);
 });

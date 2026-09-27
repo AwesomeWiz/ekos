@@ -16,6 +16,7 @@ export function AppSidebar() {
       <NavLink to="/knowledge-graph" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Share2 size={19} />Knowledge graph</NavLink>
       <NavLink to="/connectors" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Puzzle size={19} />Connectors</NavLink>
       {profile && <NavLink to="/account" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><UserCircle size={19} />Account</NavLink>}
+      {profile?.role === 'Administrator' && <NavLink to="/admin/users" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><UserCircle size={19} />User Management</NavLink>}
     </nav>
     <section className="chat-history" aria-label="Chat history">
       <h2>Chats</h2>
