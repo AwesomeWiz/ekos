@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
     GITHUB_OWNER: str = ""
     GITHUB_REPO: str = ""
+    JIRA_URL: str = ""
+    JIRA_EMAIL: str = ""
     JIRA_API_TOKEN: str = ""
+    JIRA_PROJECT_KEY: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
