@@ -39,11 +39,16 @@ class SlackClient:
 
     def get_channels(
         self,
-        types: str = "public_channel,private_channel",
+        types: str = "public_channel",
         limit: int = 100,
         max_results: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Retrieve channels with cursor-based pagination."""
+        """Retrieve channels with cursor-based pagination.
+
+        Defaults to public channels only (requires channels:read scope).
+        To include private channels, pass types='public_channel,private_channel'
+        and ensure the bot token has the groups:read scope.
+        """
         all_channels: List[Dict[str, Any]] = []
         cursor: Optional[str] = None
 

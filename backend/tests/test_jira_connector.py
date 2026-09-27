@@ -204,8 +204,24 @@ def test_jira_client_get_issues(mock_get):
 
     assert len(issues) == 2
     assert issues[0]["key"] == "EKOS-42"
+    assert "/rest/api/3/search/jql" in mock_get.call_args[0][0]
     params = mock_get.call_args[1]["params"]
     assert 'project = "EKOS"' in params["jql"]
+
+
+@patch("httpx.get")
+def test_jira_client_get_issues_legacy_fallback_on_410(mock_get):
+    resp_410 = Mock(status_code=410)
+    resp_200 = Mock(status_code=200, json=lambda: {"issues": SAMPLE_ISSUES_RAW})
+    mock_get.side_effect = [resp_410, resp_200]
+
+    client = JiraClient("https://aekos.atlassian.net", "token", "alen@example.com")
+    issues = client.get_issues(project_key="EKOS")
+
+    assert len(issues) == 2
+    assert mock_get.call_count == 2
+    assert "/rest/api/2/search/jql" in mock_get.call_args_list[1][0][0]
+
 
 
 # ---------------------------------------------------------------------------

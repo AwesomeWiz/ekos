@@ -75,21 +75,30 @@ class JiraClient:
             "fields": fields,
         }
 
-        url = f"{self.base_url}/rest/api/2/search"
+        url = f"{self.base_url}/rest/api/3/search/jql"
         response = httpx.get(
             url,
             headers=self._get_headers(),
             params=params,
             timeout=self.timeout,
         )
-        if response.status_code == 404:
-            url = f"{self.base_url}/rest/api/3/search"
+        if response.status_code in {404, 410}:
+            # Fallback to /rest/api/2/search/jql or legacy /rest/api/2/search (for Server/Data Center)
+            url = f"{self.base_url}/rest/api/2/search/jql"
             response = httpx.get(
                 url,
                 headers=self._get_headers(),
                 params=params,
                 timeout=self.timeout,
             )
+            if response.status_code in {404, 410}:
+                url = f"{self.base_url}/rest/api/2/search"
+                response = httpx.get(
+                    url,
+                    headers=self._get_headers(),
+                    params=params,
+                    timeout=self.timeout,
+                )
         response.raise_for_status()
         return response.json().get("issues", [])
 

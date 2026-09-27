@@ -202,6 +202,57 @@ def test_confluence_client_test_connection_auth_failure(mock_get):
         client.test_connection()
 
 
+def test_confluence_client_atlassian_cloud_url_normalization():
+    # User provides domain without /wiki
+    client = ConfluenceClient("https://ekos-demo.atlassian.net", "token", "alen@example.com")
+    assert client.base_url == "https://ekos-demo.atlassian.net/wiki"
+
+
+@patch("httpx.get")
+def test_confluence_client_dynamic_wiki_fallback_on_404(mock_get):
+    resp_404 = Mock(status_code=404)
+    resp_200 = Mock(status_code=200, json=lambda: SAMPLE_CONFLUENCE_USER)
+    mock_get.side_effect = [resp_404, resp_200]
+
+    # Non-atlassian.net domain without /wiki
+    client = ConfluenceClient("https://confluence.corp.internal", "token", "alen@example.com")
+    result = client.test_connection()
+
+    assert result["displayName"] == "Alen Saji"
+    assert mock_get.call_count == 2
+    assert "https://confluence.corp.internal/wiki/rest/api/user/current" in mock_get.call_args_list[1][0][0]
+    assert client.base_url == "https://confluence.corp.internal/wiki"
+
+
+@patch("httpx.get")
+def test_confluence_client_test_connection_space_fallback(mock_get):
+    resp_404 = Mock(status_code=404)
+    resp_200 = Mock(status_code=200, json=lambda: SAMPLE_SPACES_PAGE_2)
+    mock_get.side_effect = [resp_404, resp_200]
+
+    client = ConfluenceClient("https://aekos.atlassian.net/wiki", "token", "alen@example.com")
+    result = client.test_connection()
+
+    assert "results" in result
+    assert mock_get.call_count == 2
+    assert "/rest/api/space" in mock_get.call_args_list[1][0][0]
+    assert mock_get.call_args_list[1][1]["params"]["limit"] == 1
+
+
+@patch("httpx.get")
+def test_confluence_client_spaces_v2_fallback_on_404(mock_get):
+    resp_404 = Mock(status_code=404)
+    resp_200 = Mock(status_code=200, json=lambda: {"results": [{"id": 1, "key": "EKOS", "name": "AEKOS"}], "_links": {}})
+    mock_get.side_effect = [resp_404, resp_200]
+
+    client = ConfluenceClient("https://aekos.atlassian.net/wiki", "token", "alen@example.com")
+    spaces = client.get_spaces(limit=1)
+
+    assert len(spaces) == 1
+    assert mock_get.call_count == 2
+    assert "/api/v2/spaces" in mock_get.call_args_list[1][0][0]
+
+
 @patch("httpx.get")
 def test_confluence_client_get_spaces_with_pagination(mock_get):
     resp_p1 = Mock()

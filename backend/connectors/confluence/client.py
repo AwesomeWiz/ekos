@@ -13,7 +13,11 @@ class ConfluenceClient:
         email: Optional[str] = None,
         timeout: float = 10.0,
     ):
-        self.base_url = base_url.rstrip("/")
+        base = base_url.rstrip("/")
+        # Atlassian Cloud serves Confluence under the '/wiki' context path
+        if ".atlassian.net" in base and not base.endswith("/wiki"):
+            base = f"{base}/wiki"
+        self.base_url = base
         self.token = token
         self.email = email
         self.timeout = timeout
@@ -31,14 +35,39 @@ class ConfluenceClient:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
+    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> httpx.Response:
+        """Execute a GET request with automatic fallback to '/wiki' path if needed."""
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        response = httpx.get(
+            url,
+            headers=self._get_headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        # If 404 and '/wiki' is not already in base_url, retry with '/wiki' prefix
+        if response.status_code == 404 and "/wiki" not in self.base_url:
+            alt_url = f"{self.base_url}/wiki/{path.lstrip('/')}"
+            alt_response = httpx.get(
+                alt_url,
+                headers=self._get_headers(),
+                params=params,
+                timeout=self.timeout,
+            )
+            if alt_response.status_code != 404:
+                self.base_url = f"{self.base_url}/wiki"
+                return alt_response
+        return response
+
     def test_connection(self) -> Dict[str, Any]:
-        """Verify authentication and connectivity."""
-        url = f"{self.base_url}/rest/api/user/current"
-        response = httpx.get(url, headers=self._get_headers(), timeout=self.timeout)
+        """Verify authentication and connectivity.
+        
+        Attempts /rest/api/user/current, falling back to space endpoints if restricted.
+        """
+        response = self._get("rest/api/user/current")
         if response.status_code == 404:
-            # Fallback if current user endpoint is restricted/different on server
-            url = f"{self.base_url}/rest/api/space?limit=1"
-            response = httpx.get(url, headers=self._get_headers(), timeout=self.timeout)
+            response = self._get("rest/api/space", params={"limit": 1})
+            if response.status_code == 404:
+                response = self._get("api/v2/spaces", params={"limit": 1})
         response.raise_for_status()
         return response.json()
 
@@ -59,20 +88,16 @@ class ConfluenceClient:
                     break
                 current_limit = min(limit, remaining)
 
-            url = f"{self.base_url}/rest/api/space"
             params = {"start": start, "limit": current_limit, "status": "current"}
-            response = httpx.get(
-                url,
-                headers=self._get_headers(),
-                params=params,
-                timeout=self.timeout,
-            )
+            response = self._get("rest/api/space", params=params)
+            if response.status_code == 404:
+                # Fallback to Confluence Cloud API v2
+                response = self._get("api/v2/spaces", params={"limit": current_limit})
             response.raise_for_status()
             data = response.json()
             batch = data.get("results", [])
             all_spaces.extend(batch)
 
-            # Pagination stop conditions
             if not batch or len(batch) < current_limit:
                 break
             if "_links" in data and "next" not in data["_links"]:
@@ -101,7 +126,6 @@ class ConfluenceClient:
                     break
                 current_limit = min(limit, remaining)
 
-            url = f"{self.base_url}/rest/api/content"
             params: Dict[str, Any] = {
                 "type": "page",
                 "expand": expand,
@@ -111,12 +135,7 @@ class ConfluenceClient:
             if space_key:
                 params["spaceKey"] = space_key
 
-            response = httpx.get(
-                url,
-                headers=self._get_headers(),
-                params=params,
-                timeout=self.timeout,
-            )
+            response = self._get("rest/api/content", params=params)
             response.raise_for_status()
             data = response.json()
             batch = data.get("results", [])
@@ -132,13 +151,7 @@ class ConfluenceClient:
 
     def get_page_by_id(self, page_id: str) -> Dict[str, Any]:
         """Fetch a single page with all necessary expansions."""
-        url = f"{self.base_url}/rest/api/content/{page_id}"
         expand = "body.storage,version,metadata.labels,history,space"
-        response = httpx.get(
-            url,
-            headers=self._get_headers(),
-            params={"expand": expand},
-            timeout=self.timeout,
-        )
+        response = self._get(f"rest/api/content/{page_id}", params={"expand": expand})
         response.raise_for_status()
         return response.json()
