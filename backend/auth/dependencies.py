@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from models.base import get_db
 from models.user import User
+from models.permission import Permission
 from auth.security import decode_access_token
 
 security_scheme = HTTPBearer()
@@ -45,3 +46,24 @@ def get_current_user(
         )
         
     return user
+
+
+def require_permission(resource: str, action: str):
+    """Authorize against the seeded role-permission rows, never a JWT role claim."""
+    def check_permission(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        allowed = db.query(Permission.id).filter(
+            Permission.role_id == current_user.role_id,
+            Permission.resource == resource,
+            Permission.action == action,
+        ).first()
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission required: {resource}:{action}",
+            )
+        return current_user
+
+    return check_permission

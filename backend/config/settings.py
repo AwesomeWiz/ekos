@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "AEKOS - Autonomous Enterprise Knowledge Operating System"
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api"
+    CORS_ORIGINS: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
     # JWT Settings
     JWT_SECRET: str = "change-this-to-a-secure-secret-key-in-production"
@@ -24,6 +25,8 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "llama3"
     EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"
     GITHUB_TOKEN: str = ""
+    GITHUB_OWNER: str = ""
+    GITHUB_REPO: str = ""
     JIRA_API_TOKEN: str = ""
 
     model_config = SettingsConfigDict(

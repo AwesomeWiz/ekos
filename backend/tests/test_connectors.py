@@ -1,8 +1,8 @@
 def test_connector_crud_workflow(client):
     # Authenticate
     login_resp = client.post("/api/login", json={
-        "email": "arnold@aekos.com",
-        "password": "password123"
+        "email": "admin@aekos.com",
+        "password": "admin123"
     })
     assert login_resp.status_code == 200
     token = login_resp.json()["access_token"]
@@ -24,7 +24,7 @@ def test_connector_crud_workflow(client):
     connector_id = connector_data["id"]
     assert connector_data["name"] == "Primary GitHub Repository"
     assert connector_data["type"] == "GitHub"
-    assert connector_data["status"] == "active"
+    assert connector_data["status"] == "registered"
     assert connector_data["configuration"]["api_url"] == "https://api.github.com"
 
     # 2. List Connectors

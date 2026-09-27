@@ -37,3 +37,20 @@ class ConnectorRead(BaseModel):
     configuration: Optional[ConnectorConfigRead] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GitHubTestResponse(BaseModel):
+    status: str
+    connector: str
+    account: str
+
+
+class GitHubSyncResponse(BaseModel):
+    status: str
+    connector: str
+    repository: str
+    default_branch: str
+    branches: int
+    commits: int
+    issues: int
+    synced_at: datetime

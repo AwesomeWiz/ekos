@@ -16,6 +16,7 @@ from models.organization import Organization
 from models.user import User
 from auth.security import hash_password
 from main import app, init_db
+from services.demo_seed import seed_demo
 
 # Create in-memory SQLite database engine for fast, isolated testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -32,6 +33,7 @@ def db():
     # Initialize DB schema & seed data
     init_db(target_engine=engine)
     session = TestingSessionLocal()
+    seed_demo(session, include_connector=False)
     
     yield session
     

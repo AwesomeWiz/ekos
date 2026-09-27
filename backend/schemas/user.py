@@ -8,8 +8,14 @@ class UserProfileResponse(BaseModel):
     email: EmailStr
     role: Optional[str] = None
     organization: Optional[str] = None
+    permissions: list["PermissionRead"] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PermissionRead(BaseModel):
+    resource: str
+    action: str
 
 class UserCreate(BaseModel):
     full_name: str

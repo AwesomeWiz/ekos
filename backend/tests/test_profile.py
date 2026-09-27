@@ -19,5 +19,6 @@ def test_profile_authorized_with_jwt(client):
     assert data["email"] == "arnold@aekos.com"
     assert data["full_name"] == "Arnold Shibu"
     assert data["role"] == "Developer"
+    assert {tuple(item.values()) for item in data["permissions"]} == {("connectors", "read")}
     assert data["organization"] == "ABC Solutions"
     assert "password_hash" not in data

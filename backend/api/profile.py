@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from models.user import User
-from schemas.user import UserProfileResponse
+from schemas.user import UserProfileResponse, PermissionRead
 from auth.dependencies import get_current_user
 
 router = APIRouter(tags=["User Profile"])
@@ -16,5 +16,6 @@ def get_profile(current_user: User = Depends(get_current_user)):
         full_name=current_user.full_name,
         email=current_user.email,
         role=role_name,
-        organization=org_name
+        organization=org_name,
+        permissions=[PermissionRead(resource=item.resource, action=item.action) for item in (current_user.role.permissions if current_user.role else [])],
     )

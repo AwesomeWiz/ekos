@@ -48,9 +48,8 @@ def init_db(target_engine=None):
             db.add(org)
             db.flush()
 
-        # Seed Default Users if empty
-        user_count = db.query(User).count()
-        if user_count == 0:
+        # Keep the existing demo identities available without changing existing accounts.
+        if not db.query(User).filter(User.email == "arnold@aekos.com").first():
             dev_user = User(
                 full_name="Arnold Shibu",
                 email="arnold@aekos.com",
@@ -59,6 +58,8 @@ def init_db(target_engine=None):
                 organization_id=org.id,
                 status=True
             )
+            db.add(dev_user)
+        if not db.query(User).filter(User.email == "admin@aekos.com").first():
             admin_user = User(
                 full_name="System Admin",
                 email="admin@aekos.com",
@@ -67,7 +68,6 @@ def init_db(target_engine=None):
                 organization_id=org.id,
                 status=True
             )
-            db.add(dev_user)
             db.add(admin_user)
 
         db.commit()
@@ -96,10 +96,10 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Register API Routers

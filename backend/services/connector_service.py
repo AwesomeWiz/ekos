@@ -19,7 +19,7 @@ def create_connector(db: Session, connector_in: ConnectorCreate) -> Connector:
     connector = Connector(
         name=connector_in.name,
         type=connector_in.type,
-        status="active",
+        status="registered",
         organization_id=connector_in.organization_id
     )
     db.add(connector)

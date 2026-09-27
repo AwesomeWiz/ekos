@@ -1,184 +1,53 @@
-# AEKOS Backend Foundation
+# EKOS backend demo
 
-The backend for AEKOS (Autonomous Enterprise Knowledge Operating System), built with Python 3.11+, FastAPI, SQLAlchemy, Pydantic, and JWT authentication.
+FastAPI, SQLAlchemy, JWT auth, persisted connectors, database permissions, and the existing GitHub connector power the 30% demo. Python 3.11+ is required; the local setup was verified with Python 3.12.14.
 
----
+## Fresh setup (PowerShell, from repository root)
 
-## 1. Prerequisites
-
-- Python 3.11+
-- PostgreSQL 16+ (or default SQLite for local development/testing)
-
----
-
-## 2. Environment Setup
-
-### Create and Activate Virtual Environment
-
-```bash
-# Navigate to the backend directory
-cd backend
-
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On Windows (PowerShell):
-.\venv\Scripts\Activate.ps1
-# On Linux/macOS:
-source venv/bin/activate
-```
-
-### Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 3. Configuration (`.env`)
-
-Copy `.env.example` to `.env`:
-
-```bash
-cp .env.example .env
-```
-
-Configure your environment variables as needed:
-
-```env
-JWT_SECRET=your-secure-jwt-secret-key
-POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/aekos_db
-```
-
-*(Note: If `POSTGRES_URL` is omitted or set to SQLite, the application defaults to an SQLite file database `sqlite:///./aekos.db` for instant out-of-the-box local testing).*
-
----
-
-## 4. Database Setup (PostgreSQL)
-
-If using PostgreSQL:
-
-1. Ensure PostgreSQL service is running on port 5432.
-2. Create the database `aekos_db`:
-   ```sql
-   CREATE DATABASE aekos_db;
-   ```
-3. Update `POSTGRES_URL` in `.env`:
-   ```env
-   POSTGRES_URL=postgresql://username:password@localhost:5432/aekos_db
-   ```
-4. Tables and default roles/users will be auto-initialized when starting the FastAPI backend application.
-
----
-
-## 5. Running the Backend Server
-
-```bash
-uvicorn main:app --reload
-```
-
-The API server will run at:
-- **Base API**: [http://localhost:8000](http://localhost:8000)
-- **Interactive Swagger Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc Documentation**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
----
-
-## 6. Default Seed Credentials
-
-Upon initial startup, default roles and test accounts are seeded automatically:
-
-| Full Name | Email | Password | Role | Organization |
-| :--- | :--- | :--- | :--- | :--- |
-| **Arnold Shibu** | `arnold@aekos.com` | `password123` | Developer | ABC Solutions |
-| **System Admin** | `admin@aekos.com` | `admin123` | Administrator | ABC Solutions |
-
----
-
-## 7. Running Tests
-
-Execute the automated pytest suite:
-
-```bash
-pytest
-```
-
----
-
-## 8. Example API Requests
-
-### Login (`POST /api/login`)
-
-**PowerShell:**
 ```powershell
-$body = @{
-    email = "arnold@aekos.com"
-    password = "password123"
-} | ConvertTo-Json
-
-$response = Invoke-RestMethod -Uri "http://localhost:8000/api/login" -Method Post -ContentType "application/json" -Body $body
-$token = $response.access_token
-Write-Host "JWT Access Token: $token"
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+Copy-Item backend\.env.example backend\.env
 ```
 
-**cURL:**
-```bash
-curl -X POST "http://localhost:8000/api/login" \
-     -H "Content-Type: application/json" \
-     -d '{"email": "arnold@aekos.com", "password": "password123"}'
-```
+Set a unique `JWT_SECRET` in `backend\.env`. The example `POSTGRES_URL=sqlite:///./aekos.db` creates a local SQLite database. For PostgreSQL, set `POSTGRES_URL` to your existing database URL. Set `GITHUB_TOKEN`, `GITHUB_OWNER`, and `GITHUB_REPO` for a repository the token can read. Keep credentials only in the server environment file; the seed does not put the GitHub token in the database. With these values empty, GitHub is seeded as **not_configured** and test/sync return 409. `CORS_ORIGINS` contains the two default Vite origins. Neo4j, Chroma, and LLM settings remain future-stage placeholders; no such service is needed for this demo.
 
----
-
-### Retrieve User Profile (`GET /api/profile`)
-
-**PowerShell:**
 ```powershell
-$headers = @{
-    Authorization = "Bearer $token"
-}
-Invoke-RestMethod -Uri "http://localhost:8000/api/profile" -Method Get -Headers $headers
+cd E:\PROJECTS\EKOS\backend
+..\.venv\Scripts\python.exe scripts\seed_demo.py
+..\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-**cURL:**
-```bash
-curl -X GET "http://localhost:8000/api/profile" \
-     -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>"
-```
+`scripts/seed_demo.py` can be run repeatedly. It creates missing roles and users using the existing initial-data function, then missing connector permissions and one GitHub Connector row for ABC Solutions. It preserves existing users, configuration tokens, and last-sync timestamps. Backend startup still initializes tables and the original users, but the explicit seed command is required for connector registration and permissions.
 
----
+| Role | Email | Password | Connector permissions |
+| --- | --- | --- | --- |
+| Developer | `arnold@aekos.com` | `password123` | read |
+| Administrator | `admin@aekos.com` | `admin123` | read, manage, test, sync |
 
-### Register a Connector (`POST /api/connectors`)
+These are development-only credentials. Passwords are hashed in the database.
 
-**PowerShell:**
+## API
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| POST | `/api/login` | Returns JWT for seeded users |
+| POST | `/api/logout` | Authenticated logout acknowledgement |
+| GET | `/api/profile` | Identity, organization, role, database permissions |
+| GET | `/api/connectors` | Organization-scoped persisted connector records; `connectors:read` |
+| POST/PUT/DELETE | `/api/connectors`, `/api/connectors/{id}` | Connector management; `connectors:manage` |
+| POST | `/api/connectors/{id}/test` | Calls `GitHubConnector.test_connection()`; `connectors:test` |
+| POST | `/api/connectors/{id}/sync` | Calls `GitHubConnector.sync()`; `connectors:sync` |
+
+Test returns the authenticated GitHub account. Sync returns the repository, default branch, branch/commit/issue counts, and timestamp; it updates connector status and `last_sync`. The API never returns the token. GitHub API/network failures return 502 with a safe message. Tenant ownership is checked for connector actions. No new GitHub client was built; the existing teammate implementation is used. Neo4j has node-writing helpers but no complete GitHub ingestion or graph-read path, so sync does not claim graph persistence.
+
+To demonstrate RBAC, log in as Developer and observe GitHub in GET, then call POST test/sync and receive 403. Log in as Administrator and run test/sync. When GitHub env vars are absent, admin receives 409; with valid credentials and network, test/sync invoke GitHub. Swagger is available at `http://127.0.0.1:8000/docs`.
+
+## Tests
+
 ```powershell
-$connectorBody = @{
-    name = "AEKOS GitHub Repo"
-    type = "GitHub"
-    configuration = @{
-        api_url = "https://api.github.com"
-        token = "ghp_exampletoken123"
-        sync_interval = "1 hour"
-    }
-} | ConvertTo-Json -Depth 3
-
-Invoke-RestMethod -Uri "http://localhost:8000/api/connectors" -Method Post -ContentType "application/json" -Headers $headers -Body $connectorBody
+cd E:\PROJECTS\EKOS\backend
+..\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**cURL:**
-```bash
-curl -X POST "http://localhost:8000/api/connectors" \
-     -H "Content-Type: application/json" \
-     -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
-     -d '{
-       "name": "AEKOS GitHub Repo",
-       "type": "GitHub",
-       "configuration": {
-         "api_url": "https://api.github.com",
-         "token": "ghp_exampletoken123",
-         "sync_interval": "1 hour"
-       }
-     }'
-```
+Tests cover auth, profile permissions, seeded connector idempotence, RBAC 403/allowed actions, GitHub service behavior with mocked HTTP, sync counts and timestamps, configuration errors, and organization scoping. They require no live GitHub token.
