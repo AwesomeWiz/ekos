@@ -9,10 +9,10 @@ import { useAuth } from '../hooks/useAuth';
 import { useChat } from '../hooks/useChat';
 
 export function HomePage() {
-  const { profile } = useAuth();
+  const { profile, loading } = useAuth();
   const { startChat } = useChat();
   const location = useLocation();
-  return <AppShell className="home-page" rightPanel={<RightPanel label="Your connected knowledge"><ConnectedSources /><SuggestedQuestions /><PanelCard><h2 className="card-heading">Sample workspace</h2><p className="state-message">Chat answers and the knowledge graph use sample knowledge. Source status comes from your connected account.</p></PanelCard></RightPanel>}>
-    <div className="welcome-area"><div className="welcome-heading"><BrandMark /><h1>{profile ? `Hello, ${profile.full_name.split(' ')[0]}.` : 'Hello, there.'}</h1></div><ChatInput key={location.key} onSubmit={startChat} /><p className="demo-caption">Explore sample knowledge · Conversations stay in this browser tab</p></div>
+  return <AppShell className="home-page" rightPanel={<RightPanel label="Your connected knowledge"><ConnectedSources /><SuggestedQuestions /><PanelCard><h2 className="card-heading">Knowledge search</h2><p className="state-message">Search retrieves indexed GitHub knowledge. It does not generate AI answers. The knowledge graph remains sample data.</p></PanelCard></RightPanel>}>
+    <div className="welcome-area"><div className="welcome-heading"><BrandMark /><h1>{profile ? `Hello, ${profile.full_name.split(' ')[0]}.` : 'Hello, there.'}</h1></div><ChatInput key={location.key} disabled={loading} onSubmit={startChat} /><p className="demo-caption">{profile ? 'Semantic search' : 'Sign in for semantic search'} · Conversations stay in this browser tab</p></div>
   </AppShell>;
 }

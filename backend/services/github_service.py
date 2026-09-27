@@ -1,6 +1,7 @@
 """Thin API adapter for the existing teammate-built GitHubConnector."""
 
 from datetime import datetime, timezone
+import logging
 
 import httpx
 from fastapi import HTTPException, status
@@ -9,6 +10,9 @@ from sqlalchemy.orm import Session
 from config.settings import settings
 from connectors.github.connector import GitHubConnector
 from models.connector import Connector
+from services.indexing_service import index_github_data
+
+logger = logging.getLogger(__name__)
 
 
 def _configured_connector(connector: Connector) -> GitHubConnector:
@@ -63,8 +67,16 @@ def sync_github_connector(db: Session, connector: Connector) -> dict:
     if connector.configuration:
         connector.configuration.last_sync = synced_at
     db.commit()
+    try:
+        if not connector.organization_id:
+            raise ValueError("An organization is required for knowledge indexing")
+        indexing = index_github_data(result, connector.organization_id, connector.id, connector.name)
+    except Exception as error:
+        logger.exception("GitHub sync succeeded but indexing failed for connector %s (%s)", connector.id, type(error).__name__)
+        indexing = {"status": "error", "documents_indexed": 0, "chroma_total": None,
+                    "error": "GitHub synced, but knowledge indexing failed. Check the backend Chroma/model setup and retry Sync."}
     return {
         "status": "success", "connector": "GitHub", "repository": repository_name,
         "default_branch": default_branch, "branches": branch_count,
-        "commits": commit_count, "issues": issue_count, "synced_at": synced_at,
+        "commits": commit_count, "issues": issue_count, "synced_at": synced_at, "indexing": indexing,
     }

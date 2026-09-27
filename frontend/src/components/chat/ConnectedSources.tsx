@@ -57,6 +57,7 @@ export function ConnectedSources({ full = false }: { full?: boolean }) {
           </div>}
           {full && action?.message && <p className={action.error ? 'inline-error action-result' : 'state-message action-result'} role={action.error ? 'alert' : 'status'}>{action.message}</p>}
           {full && action?.result && <p className="item-meta action-result">Default branch: {action.result.default_branch} · {action.result.branches} branches · {action.result.commits} commits · {action.result.issues} issues</p>}
+          {full && action?.result?.indexing && <p className={action.result.indexing.status === 'error' ? 'inline-error action-result' : 'item-meta action-result'} role={action.result.indexing.status === 'error' ? 'alert' : 'status'}>{action.result.indexing.status === 'error' ? action.result.indexing.error : `Indexed ${action.result.indexing.documents_indexed} documents · ${action.result.indexing.chroma_total} in your knowledge index`}</p>}
         </div>;
       })}</div>}
     {full ? <><p className="state-message connector-note">Statuses reflect registered records. Only a successful test or sync verifies a GitHub connection.</p><p className="item-meta planned-connectors">Planned: Jira · Slack · Confluence</p></> : <Link className="text-link card-footer-link" to="/connectors">View all sources <ArrowRight size={15} /></Link>}

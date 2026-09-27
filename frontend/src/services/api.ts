@@ -7,7 +7,17 @@ export interface Connector {
   configuration: { id: string; connector_id: string; api_url: string | null; sync_interval: string | null; last_sync: string | null } | null;
 }
 export interface GitHubTestResult { status: string; connector: string; account: string }
-export interface GitHubSyncResult { status: string; connector: string; repository: string; default_branch: string; branches: number; commits: number; issues: number; synced_at: string }
+export interface IndexingSummary { status: 'indexed' | 'error'; documents_indexed: number; chroma_total: number | null; error: string | null }
+export interface GitHubSyncResult { status: string; connector: string; repository: string; default_branch: string; branches: number; commits: number; issues: number; synced_at: string; indexing?: IndexingSummary | null }
+export interface SearchResult { document_id: string; text: string; metadata: Record<string, string | number | boolean>; distance: number }
+export interface SearchResponse { query: string; results: SearchResult[]; document_count: number }
+export interface SearchStatus { collection: string; document_count: number; embedding_model: string }
+
+export function sourceUrl(result: SearchResult): string | undefined {
+  const value = result.metadata.url;
+  if (typeof value !== 'string') return undefined;
+  try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) ? url.href : undefined; } catch { return undefined; }
+}
 
 export class ApiError extends Error {
   constructor(message: string, public status = 0) { super(message); this.name = 'ApiError'; }
@@ -57,5 +67,7 @@ export const api = {
   getProfile: (token: string, signal?: AbortSignal) => request<UserProfile>('/profile', { token, signal }),
   getConnectors: (token: string, signal?: AbortSignal) => request<Connector[]>('/connectors', { token, signal }),
   testConnector: (token: string, id: string) => request<GitHubTestResult>(`/connectors/${encodeURIComponent(id)}/test`, { method: 'POST', token, timeoutMs: 20000 }),
-  syncConnector: (token: string, id: string) => request<GitHubSyncResult>(`/connectors/${encodeURIComponent(id)}/sync`, { method: 'POST', token, timeoutMs: 60000 }),
+  syncConnector: (token: string, id: string) => request<GitHubSyncResult>(`/connectors/${encodeURIComponent(id)}/sync`, { method: 'POST', token, timeoutMs: 300000 }),
+  semanticSearch: (token: string, query: string, topK = 5, signal?: AbortSignal) => request<SearchResponse>('/search', { method: 'POST', token, body: { query, top_k: topK }, signal, timeoutMs: 120000 }),
+  getSearchStatus: (token: string, signal?: AbortSignal) => request<SearchStatus>('/search/status', { token, signal }),
 };

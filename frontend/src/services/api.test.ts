@@ -16,6 +16,14 @@ describe('actual backend API contracts', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({}, { status })));
     await expect(api.getConnectors('token')).rejects.toMatchObject({ status });
   });
+  it('uses protected semantic search and status endpoints', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ query: 'branches', results: [], document_count: 0 })).mockResolvedValueOnce(Response.json({ collection: 'enterprise_documents', document_count: 0, embedding_model: 'BAAI/bge-base-en-v1.5' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await api.semanticSearch('token', 'branches', 3);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8000/api/search', expect.objectContaining({ method: 'POST', body: JSON.stringify({ query: 'branches', top_k: 3 }), headers: expect.objectContaining({ Authorization: 'Bearer token' }) }));
+    await api.getSearchStatus('token');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8000/api/search/status', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token' }) }));
+  });
   it('notifies session expiration only for protected requests', async () => {
     const listener = vi.fn(); window.addEventListener(SESSION_EXPIRED_EVENT, listener);
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({}, { status: 401 })));

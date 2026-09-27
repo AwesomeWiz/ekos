@@ -2,7 +2,7 @@
 // Opt-in: credentials are supplied only to the test process, never to the client bundle.
 import { env } from 'node:process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from './App';
 import { api } from './services/api';
@@ -36,4 +36,24 @@ describe.skipIf(!env.EKOS_TEST_EMAIL || !env.EKOS_TEST_PASSWORD)('running FastAP
     expect(sessionStorage.getItem('ekos.session-token')).toBeNull();
     expect(await screen.findByText('Sign in to view your connected sources.')).toBeTruthy();
   }, 30000);
+  it.skipIf(env.EKOS_TEST_LIVE_SEARCH !== '1')('renders actual indexed GitHub results from Developer semantic search', async () => {
+    render(<MemoryRouter initialEntries={['/login']}><App /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: env.EKOS_TEST_EMAIL } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: env.EKOS_TEST_PASSWORD } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByRole('heading', { name: 'Connectors' }, { timeout: 15000 });
+    const token = sessionStorage.getItem('ekos.session-token')!;
+    expect((await api.getSearchStatus(token)).document_count).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('link', { name: 'New chat' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask EKOS anything...' }), { target: { value: 'repository branches' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await screen.findByRole('heading', { name: 'Retrieved knowledge' }, { timeout: 120000 });
+    const sources = within(screen.getByRole('complementary', { name: 'Conversation context' }));
+    expect(sources.getAllByRole('link').length).toBeGreaterThan(0);
+    expect(sources.queryByText('PAY-42')).toBeNull();
+    expect(sources.queryByText('Architecture.md')).toBeNull();
+    const results = await api.semanticSearch(token, 'repository branches');
+    expect(results.results.length).toBeGreaterThan(0);
+    expect(results.results.every(result => result.metadata.source === 'github')).toBe(true);
+  }, 150000);
 });

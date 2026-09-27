@@ -17,6 +17,20 @@ from models.user import User
 from auth.security import hash_password
 from main import app, init_db
 from services.demo_seed import seed_demo
+from config.settings import settings
+from services import knowledge_runtime
+from unittest.mock import Mock
+
+
+@pytest.fixture(autouse=True)
+def isolated_knowledge_runtime(tmp_path, monkeypatch):
+    """Use real temporary Chroma storage, but never download a model in unit tests."""
+    monkeypatch.setattr(settings, "CHROMA_PATH", str(tmp_path / "chroma"))
+    embeddings = Mock()
+    embeddings.embed.side_effect = lambda text: [1.0, float(len(text) % 7), 0.5]
+    embeddings.embed_many.side_effect = lambda texts: [embeddings.embed(text) for text in texts]
+    monkeypatch.setattr(knowledge_runtime, "_embeddings", lambda *_args: embeddings)
+    return embeddings
 
 # Create in-memory SQLite database engine for fast, isolated testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
