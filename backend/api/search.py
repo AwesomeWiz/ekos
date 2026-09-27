@@ -34,19 +34,24 @@ def search_unavailable(error: Exception):
     raise HTTPException(status_code=503, detail="Knowledge search is unavailable. Check the backend Chroma/model setup and try again.") from error
 
 
+def retrieve_knowledge(query: str, top_k: int, db: Session, user: User) -> dict:
+    """Shared retrieval path for search and chat, preserving the existing tenant scope."""
+    scope = knowledge_scope(db, user)
+    if scope is None:
+        return {"query": query, "results": [], "document_count": 0}
+    try:
+        return SemanticSearchService().search(query, top_k, where=scope)
+    except Exception as error:
+        search_unavailable(error)
+
+
 @router.post("", response_model=SearchResponse)
 def semantic_search(request: SearchRequest, db: Session = Depends(get_db),
                     user: User = Depends(require_permission("connectors", "read"))):
     query = request.query.strip()
     if not query:
         raise HTTPException(status_code=422, detail="Enter a non-empty search query.")
-    scope = knowledge_scope(db, user)
-    if scope is None:
-        return {"query": query, "results": [], "document_count": 0}
-    try:
-        return SemanticSearchService().search(query, request.top_k, where=scope)
-    except Exception as error:
-        search_unavailable(error)
+    return retrieve_knowledge(query, request.top_k, db, user)
 
 
 @router.get("/status", response_model=SearchStatus)

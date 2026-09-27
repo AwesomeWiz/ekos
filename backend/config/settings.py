@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: str = "password"
     CHROMA_PATH: str = "./data/chroma"
     OLLAMA_URL: str = "http://localhost:11434"
-    LLM_MODEL: str = "llama3"
+    LLM_MODEL: str = "qwen3:1.7b"
     EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"
     GITHUB_TOKEN: str = ""
     GITHUB_OWNER: str = ""
