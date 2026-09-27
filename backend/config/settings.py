@@ -27,7 +27,17 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
     GITHUB_OWNER: str = ""
     GITHUB_REPO: str = ""
+    JIRA_URL: str = ""
+    JIRA_EMAIL: str = ""
     JIRA_API_TOKEN: str = ""
+    JIRA_PROJECT_KEY: str = ""
+    CONFLUENCE_URL: str = ""
+    CONFLUENCE_EMAIL: str = ""
+    CONFLUENCE_API_TOKEN: str = ""
+    CONFLUENCE_SPACE_KEY: str = ""
+    SLACK_API_URL: str = "https://slack.com/api"
+    SLACK_BOT_TOKEN: str = ""
+    SLACK_CHANNEL_ID: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
