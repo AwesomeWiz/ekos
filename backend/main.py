@@ -19,7 +19,6 @@ from api.chat import router as chat_router
 from services.demo_seed import seed_demo
 
 from api.search import router as search_router
-from api.chat import router as chat_router
 from api.users import router as users_router
 from api.graph import router as graph_router
 
@@ -117,7 +116,6 @@ app.include_router(connectors_router, prefix=settings.API_PREFIX)
 app.include_router(chat_router, prefix=settings.API_PREFIX)
 
 app.include_router(search_router, prefix=settings.API_PREFIX)
-app.include_router(chat_router, prefix=settings.API_PREFIX)
 app.include_router(users_router, prefix=settings.API_PREFIX)
 app.include_router(graph_router, prefix=settings.API_PREFIX)
 

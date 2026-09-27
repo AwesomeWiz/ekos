@@ -46,24 +46,6 @@ class ConnectorTestResponse(BaseModel):
     details: Optional[str] = None
 
 
-class ConnectorSyncResponse(BaseModel):
-    status: str
-    connector: str
-    records_processed: int = 0
-    documents_indexed: int = 0
-    graph_nodes_updated: int = 0
-    repository: Optional[str] = None
-    default_branch: Optional[str] = None
-    branches: Optional[int] = None
-    commits: Optional[int] = None
-    issues: Optional[int] = None
-    synced_at: Optional[datetime] = None
-
-# Backward compatibility aliases
-GitHubTestResponse = ConnectorTestResponse
-GitHubSyncResponse = ConnectorSyncResponse
-
-
 class IndexingSummary(BaseModel):
     status: str
     documents_indexed: int = 0
