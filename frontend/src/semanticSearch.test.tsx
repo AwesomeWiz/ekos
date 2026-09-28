@@ -6,7 +6,8 @@ import { App } from './App';
 const profile = { id: 'search-user', full_name: 'Test Developer', email: 'dev@example.test', role: 'Developer', organization: 'Team', permissions: [{ resource: 'connectors', action: 'read' }] };
 const source = { title: 'Add Redis caching', source: 'github', repository: 'team/demo', entity_type: 'commit', url: 'https://github.com/team/demo/commit/abc123', snippet: 'Actual repository change: add Redis caching.' };
 const response = { answer: 'Redis reduces database load.', sources: [source, source], graph_context: [{ source: 'Developer', relationship: 'COMMITTED', target: 'abc123' }] };
-beforeEach(() => { sessionStorage.clear(); sessionStorage.setItem('ekos.session-token', 'search-token'); Element.prototype.scrollIntoView = vi.fn(); });
+beforeEach(() => {
+  vi.stubGlobal('innerWidth', 1366); sessionStorage.clear(); sessionStorage.setItem('ekos.session-token', 'search-token'); Element.prototype.scrollIntoView = vi.fn(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 function setup(search: () => Promise<Response>) {
   const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
@@ -30,11 +31,49 @@ function submit(query: string, placeholder = 'Ask EKOS anything...') {
 }
 
 describe('backend chat', () => {
+  it('replaces context on follow-up and clears it while the latest request is pending or empty', async () => {
+    let finish!: (response: Response) => void;
+    let calls = 0;
+    setup(() => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve(Response.json(response));
+      return new Promise(resolve => { finish = resolve; });
+    });
+    await openRoute(); submit('GitHub commits'); await screen.findByText(response.answer);
+    const context = () => within(screen.getByRole('complementary', { name: 'Conversation context' }));
+    expect(context().getByRole('img', { name: 'github source' })).toBeTruthy();
+    submit('What Jira issue mentions explainability?', 'Ask a follow-up...');
+    expect(context().queryByText(source.title)).toBeNull();
+    expect(context().getByText('Retrieving context…')).toBeTruthy();
+    const jira = { title: 'Add explainability to chatbot responses', source: 'jira', entity_type: 'Issue', snippet: 'Explainability issue' };
+    await waitFor(() => expect(calls).toBe(2));
+    finish(Response.json({ answer: jira.title, sources: [jira], graph_context: [] }));
+    await waitFor(() => expect(context().getByText(jira.title)).toBeTruthy());
+    expect(context().queryByText(source.title)).toBeNull();
+    expect(context().getByRole('img', { name: 'jira source' })).toBeTruthy();
+    submit('Unknown', 'Ask a follow-up...');
+    await waitFor(() => expect(calls).toBe(3));
+    finish(Response.json({ answer: 'Not found.', sources: [], graph_context: [] }));
+    await screen.findByText('Not found.');
+    expect(context().getByText('No retrieved sources.')).toBeTruthy();
+    expect(context().queryByText(jira.title)).toBeNull();
+  });
+  it.each(['jira', 'confluence', 'slack', 'github'])('uses the %s source icon from response metadata', async sourceType => {
+    setup(async () => Response.json({ answer: 'Grounded answer.', sources: [{ title: 'Current source', connector: sourceType, snippet: 'Record text' }], graph_context: [] }));
+    await openRoute(); submit('Question'); await screen.findByText('Grounded answer.');
+    const context = within(screen.getByRole('complementary', { name: 'Conversation context' }));
+    expect(context.getByRole('img', { name: `${sourceType} source` })).toBeTruthy();
+    expect(context.getByRole('img').querySelector('svg')).toBeTruthy();
+    expect(Boolean(context.getByRole('img').querySelector('.lucide-github'))).toBe(sourceType === 'github');
+    if (sourceType === 'jira') expect(context.getByRole('img').querySelector('[fill="#2684FF"]')).toBeTruthy();
+    if (sourceType === 'confluence') expect(context.getByRole('img').querySelector('[fill="#0052CC"]')).toBeTruthy();
+    if (sourceType === 'slack') expect(context.getByRole('img').querySelector('[fill="#36C5F0"]')).toBeTruthy();
+  });
   it('posts the message with JWT, shows thinking, then renders answer and deduplicated source context', async () => {
     let finish!: (response: Response) => void;
     const fetchMock = setup(() => new Promise(resolve => { finish = resolve; }));
     await openRoute(); submit('Why was Redis introduced?');
-    expect(within(screen.getByLabelText('Conversation')).getByText('Why was Redis introduced?')).toBeTruthy();
+    expect(within(await screen.findByLabelText('Conversation')).getByText('Why was Redis introduced?')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Thinking');
     expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', true);
     finish(Response.json(response));

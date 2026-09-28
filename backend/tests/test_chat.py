@@ -4,7 +4,7 @@ import pytest
 
 from llm.ollama_service import OllamaError
 from models.user import User
-from models.connector import Connector
+from models.connector import Connector, ConnectorConfiguration
 from models.permission import Permission
 from services.demo_seed import seed_demo
 from services.graph_context_service import retrieve_graph_context
@@ -116,7 +116,7 @@ def test_commit_list_uses_separate_authoritative_records_and_returns_grounded_an
     def grounded_answer(prompt):
         for index, commit in enumerate(commits, start=1):
             assert (f"SOURCE {index}\nType: commit\nTitle: {commit['metadata']['title']}\n"
-                    f"Repository: team/demo\nContent:\n{commit['text']}\nEND SOURCE {index}") in prompt
+                    f"Repository: team/demo\nSource: github\nContent:\n{commit['text']}\nEND SOURCE {index}") in prompt
         assert "authoritative context" in prompt
         assert "For list questions, list matching titles, names, or messages" in prompt
         assert "Do not say information is missing" in prompt
@@ -159,7 +159,7 @@ def test_chat_reuses_search_with_actual_organization_and_connector_filters(clien
         response = client.post("/api/chat", json={"message": "Repository branches?"}, headers=login(client))
     assert response.status_code == 200
     search.return_value.search.assert_called_once_with("Repository branches?", 3, where={"$and": [
-        {"organization_id": own.organization_id}, {"connector_id": {"$in": [own.id]}}, {"source": "github"},
+        {"organization_id": own.organization_id}, {"connector_id": {"$in": [own.id]}}, {"source": {"$in": ["github", "jira", "confluence", "slack"]}},
     ]})
     assert response.json()["sources"] == [SOURCE]
     assert response.json()["graph_context"] == []
@@ -185,7 +185,7 @@ def test_chat_includes_graph_relationships_in_prompt_and_response(client, retrie
     assert response.status_code == 200
     assert response.json()["graph_context"] == edges
     assert response.json()["sources"] == [SOURCE]
-    graph_lookup.assert_called_once_with("Who contributed to ekos?", [RESULT])
+    graph_lookup.assert_called_once_with("Who contributed to ekos?", [RESULT], repository_ids=[])
     prompt = service.return_value.generate.call_args.args[0]
     assert RESULT["text"] in prompt
     assert "Retrieved graph relationships" in prompt
@@ -210,3 +210,89 @@ def test_denied_chat_does_not_query_neo4j(client, db, retrieval, graph_lookup):
     db.commit()
     assert client.post("/api/chat", json={"message": "Contributors?"}, headers=headers).status_code == 403
     graph_lookup.assert_not_called()
+
+
+@pytest.mark.parametrize("question,source,kind,titles", [
+    ("What Jira issue mentions explainability?", "jira", "Issue", ["Add explainability to chatbot responses"]),
+    ("What Slack users are available in the connected workspace?", "slack", "User", ["Alen Abraham", "Slackbot"]),
+    ("What Confluence pages are available?", "confluence", "Page", ["EKOS System Architecture"]),
+])
+def test_matching_normalized_records_ground_false_model_abstention(client, retrieval, question, source, kind, titles):
+    results = [{"text": f"Title: {title} Type: {kind} Content: {title}",
+                "metadata": {"title": title, "source": source, "entity_type": kind}} for title in titles]
+    retrieval.return_value = {"results": results}
+    with patch("api.chat.OllamaService") as service:
+        service.return_value.generate.return_value = "The information was not found in the retrieved context."
+        response = client.post("/api/chat", json={"message": question}, headers=login(client))
+    assert response.status_code == 200
+    assert response.json()["answer"] == "\n".join(f"- {title}" for title in titles)
+    assert [value["title"] for value in response.json()["sources"]] == titles
+    prompt = service.return_value.generate.call_args.args[0]
+    assert f"Source: {source}" in prompt
+    assert "Matching names/titles explicitly present" in prompt
+    for result in results:
+        assert result["text"] in prompt
+
+
+def test_unrelated_jira_records_do_not_override_not_found(client, retrieval):
+    retrieval.return_value = {"results": [{"text": "Title: Fix authentication", "metadata": {
+        "title": "Fix authentication", "source": "jira", "entity_type": "Issue"}}]}
+    with patch("api.chat.OllamaService") as service:
+        service.return_value.generate.return_value = "The information was not found in the retrieved context."
+        response = client.post("/api/chat", json={"message": "What Jira issue mentions explainability?"}, headers=login(client))
+    assert response.json()["answer"] == "The information was not found in the retrieved context."
+
+
+def test_page_list_does_not_accept_source_name_instead_of_page_titles(client, retrieval):
+    retrieval.return_value = {"results": [{"text": "Title: EKOS System Architecture", "metadata": {
+        "title": "EKOS System Architecture", "source": "confluence", "entity_type": "Page"}}]}
+    with patch("api.chat.OllamaService") as service:
+        service.return_value.generate.return_value = '["Confluence"]'
+        response = client.post("/api/chat", json={"message": "What Confluence pages are available?"}, headers=login(client))
+    assert response.json()["answer"] == "- EKOS System Architecture"
+
+
+def test_slack_user_attribute_question_does_not_fall_back_to_user_names(client, retrieval):
+    retrieval.return_value = {"results": [{"text": "Title: Alen Abraham", "metadata": {
+        "title": "Alen Abraham", "source": "slack", "entity_type": "User"}}]}
+    with patch("api.chat.OllamaService") as service:
+        service.return_value.generate.return_value = "The information was not found in the retrieved context."
+        response = client.post("/api/chat", json={"message": "Which permissions are available to Slack users?"}, headers=login(client))
+    assert response.json()["answer"] == "The information was not found in the retrieved context."
+
+
+@pytest.mark.parametrize("question,source,kind", [
+    ("What Jira issue mentions explainability?", "jira", "Issue"),
+    ("What Slack users are available?", "slack", "User"),
+    ("What Confluence pages are available?", "confluence", "Page"),
+    ("Who contributed to the ekos repository?", "github", None),
+])
+def test_explicit_connector_retrieval_keeps_tenant_and_connector_scope(client, db, question, source, kind):
+    own = db.query(User).filter(User.email == "arnold@aekos.com").one()
+    connector = Connector(name=source, type=source, organization_id=own.organization_id)
+    foreign = Connector(name="foreign", type=source, organization_id=None)
+    db.add_all([connector, foreign])
+    db.commit()
+    with patch("api.search.SemanticSearchService") as search:
+        search.return_value.search.return_value = {"results": []}
+        response = client.post("/api/chat", json={"message": question}, headers=login(client))
+    assert response.status_code == 200
+    scope = search.return_value.search.call_args.kwargs["where"]["$and"]
+    assert scope[:3] == [{"organization_id": own.organization_id}, {"connector_id": {"$in": [connector.id]}}, {"source": {"$in": [source]}}]
+    assert scope[3:] == ([{"entity_type": {"$in": [kind, kind.lower()]}}] if kind else [])
+
+
+def test_contributors_use_authorized_graph_even_without_vector_hits(client, db, retrieval, graph_lookup):
+    user = db.query(User).filter(User.email == "arnold@aekos.com").one()
+    db.add(Connector(name="GitHub", type="GitHub", organization_id=user.organization_id,
+                     configuration=ConnectorConfiguration(api_url="https://github.com/AwesomeWiz/ekos")))
+    db.add(Connector(name="Foreign GitHub", type="GitHub", organization_id=None,
+                     configuration=ConnectorConfiguration(api_url="https://github.com/foreign/secret")))
+    db.commit()
+    retrieval.return_value = {"results": []}
+    graph_lookup.return_value = [{"source": "AwesomeWiz", "relationship": "COMMITTED", "target": "abc"}]
+    with patch("api.chat.OllamaService") as service:
+        service.return_value.generate.return_value = "The information was not found in the retrieved context."
+        response = client.post("/api/chat", json={"message": "Who contributed to the ekos repository?"}, headers=login(client))
+    graph_lookup.assert_called_once_with("Who contributed to the ekos repository?", [], repository_ids=["AwesomeWiz/ekos"])
+    assert response.json() == {"answer": "- AwesomeWiz", "sources": [], "graph_context": graph_lookup.return_value}

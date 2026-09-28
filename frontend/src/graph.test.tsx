@@ -14,6 +14,7 @@ const graph = { nodes: [
   { source: 'User:developer', target: 'Commit:abc', relationship: 'COMMITTED' },
 ] };
 beforeEach(() => {
+  vi.stubGlobal('innerWidth', 1366);
   sessionStorage.clear(); sessionStorage.setItem('ekos.session-token', 'graph-token');
   vi.stubGlobal('PointerEvent', class extends MouseEvent {
     pointerId: number;

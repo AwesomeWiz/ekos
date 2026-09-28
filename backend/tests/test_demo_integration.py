@@ -163,6 +163,8 @@ def test_actual_github_connector_adapter_with_stubbed_http(db, client, monkeypat
             data = [{"number": 42, "title": "Caching", "state": "open", "html_url": "https://github.com/ekos-team/demo-repo/issues/42"}]
         elif url.endswith("/readme"):
             data = {"name": "README.md", "path": "README.md", "encoding": "base64", "content": ""}
+        elif url.endswith("/contents/docs"):
+            data = []
         else:
             raise AssertionError(f"Unexpected GitHub route: {url}")
         return httpx.Response(200, json=data, request=httpx.Request("GET", url))
@@ -172,6 +174,7 @@ def test_actual_github_connector_adapter_with_stubbed_http(db, client, monkeypat
         result = client.post(f"/api/connectors/{github.id}/sync", headers=administrator)
     assert result.status_code == 200
     assert (result.json()["branches"], result.json()["commits"], result.json()["issues"]) == (1, 1, 1)
-    assert len(calls) == 6
+    assert len(calls) == 7
+    assert calls[-1] == "https://api.github.com/repos/ekos-team/demo-repo/contents/docs"
     db.refresh(github)
     assert github.configuration.last_sync is not None

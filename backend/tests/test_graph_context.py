@@ -1,7 +1,8 @@
 from unittest.mock import Mock, patch
+import pytest
 
 from graph.neo4j_service import Neo4jService
-from services.graph_context_service import retrieve_graph_context
+from services.graph_context_service import retrieve_graph_context, permitted_github_repositories
 
 
 RESULTS = [{"metadata": {"source": "github", "repository": "AwesomeWiz/ekos"}}]
@@ -66,24 +67,24 @@ def test_empty_repository_scope_does_not_query_graph():
 
 def test_context_uses_only_permitted_repository_ids_and_closes_connection():
     with patch("services.graph_context_service.Neo4jService") as service:
-        service.return_value.get_github_relationships.return_value = EDGES
+        service.return_value.get_github_contributors.return_value = EDGES
         result = retrieve_graph_context("Who contributed to ekos?", RESULTS + RESULTS + [{"metadata": {"source": "jira", "repository": "private/repo"}}])
     assert result == EDGES
     assert service.call_args.kwargs["connection_timeout"] == 2.0
-    service.return_value.get_github_relationships.assert_called_once_with(["AwesomeWiz/ekos"], ["ekos"], limit=6)
+    service.return_value.get_github_contributors.assert_called_once_with(["AwesomeWiz/ekos"], limit=6)
     service.return_value.close.assert_called_once()
 
 
 def test_graph_errors_are_optional_and_close_the_driver():
     with patch("services.graph_context_service.Neo4jService") as service:
-        service.return_value.get_github_relationships.side_effect = RuntimeError("graph offline")
+        service.return_value.get_github_contributors.side_effect = RuntimeError("graph offline")
         assert retrieve_graph_context("Contributors?", RESULTS) == []
         service.return_value.close.assert_called_once()
 
 
 def test_no_graph_matches_returns_empty_context():
     with patch("services.graph_context_service.Neo4jService") as service:
-        service.return_value.get_github_relationships.return_value = []
+        service.return_value.get_github_contributors.return_value = []
         assert retrieve_graph_context("Contributors?", RESULTS) == []
 
 
@@ -93,3 +94,62 @@ def test_unscoped_or_invalid_repository_names_never_open_neo4j():
         assert retrieve_graph_context("Contributors?", [{"metadata": {"source": "github", "repository": "ekos"}}]) == []
         assert retrieve_graph_context("Contributors?", [{"metadata": {"source": "github", "repository": "owner/repo' MATCH (n)"}}]) == []
         service.assert_not_called()
+
+
+@pytest.mark.parametrize("source", ["jira", "confluence", "slack"])
+def test_normalized_graph_context_uses_scoped_entity_ids(source):
+    entity_id = f"{source}:org:connector:Issue:1"
+    results = [{"metadata": {"source": source, "organization_id": "org", "connector_id": "connector", "knowledge_entity_id": entity_id}}]
+    with patch("services.graph_context_service.Neo4jService") as service:
+        service.return_value.get_knowledge_relationships.return_value = EDGES
+        assert retrieve_graph_context("Related knowledge?", results) == EDGES
+        service.return_value.get_knowledge_relationships.assert_called_once_with([entity_id], limit=6)
+        service.return_value.get_github_relationships.assert_not_called()
+        service.return_value.close.assert_called_once()
+
+
+def test_normalized_graph_context_rejects_foreign_entity_ids():
+    with patch("services.graph_context_service.Neo4jService") as service:
+        results = [{"metadata": {"source": "jira", "organization_id": "org", "connector_id": "connector", "knowledge_entity_id": "jira:other-org:connector:Issue:1"}}]
+        assert retrieve_graph_context("Related knowledge?", results) == []
+        service.assert_not_called()
+
+
+def test_normalized_relationship_query_is_bounded_and_read_only():
+    with patch("graph.neo4j_service.GraphDatabase.driver") as driver:
+        session = driver.return_value.session.return_value.__enter__.return_value
+        session.run.return_value = EDGES
+        service = Neo4jService()
+        assert service.get_knowledge_relationships(["jira:org:connector:Issue:1"], limit=100) == EDGES
+        query = session.run.call_args.args[0]
+        assert query.timeout == 5
+        assert "MERGE" not in query.text and "CREATE" not in query.text
+        assert "source.organization_id = target.organization_id" in query.text
+        assert session.run.call_args.kwargs["limit"] == 6
+        driver.return_value.session.assert_called_once_with(default_access_mode="READ")
+
+
+def test_contributor_query_groups_by_person_before_limit():
+    with patch("graph.neo4j_service.GraphDatabase.driver") as driver:
+        session = driver.return_value.session.return_value.__enter__.return_value
+        session.run.return_value = [Mock(data=Mock(return_value=EDGES[0]))]
+        service = Neo4jService()
+        assert service.get_github_contributors(["AwesomeWiz/ekos"], limit=100) == [EDGES[0]]
+        query = session.run.call_args.args[0]
+        assert "min(c.id)" in query.text
+        assert "COMMITTED" in query.text and "BELONGS_TO" in query.text
+        assert "MERGE" not in query.text and "CREATE" not in query.text
+        assert query.timeout == 5
+        assert session.run.call_args.kwargs["limit"] == 6
+        driver.return_value.session.assert_called_once_with(default_access_mode="READ")
+
+
+def test_unknown_repository_does_not_broaden_scope(db):
+    from models.connector import Connector, ConnectorConfiguration
+    from models.user import User
+    user = db.query(User).filter(User.email == "arnold@aekos.com").one()
+    db.add(Connector(name="GitHub", type="GitHub", organization_id=user.organization_id,
+                     configuration=ConnectorConfiguration(api_url="https://github.com/team/ekos")))
+    db.commit()
+    assert permitted_github_repositories(db, user, "Who contributed to the ekos repository?") == ["team/ekos"]
+    assert permitted_github_repositories(db, user, "Who contributed to the secret repository?") == []

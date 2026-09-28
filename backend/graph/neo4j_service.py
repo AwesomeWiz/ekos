@@ -168,6 +168,39 @@ class Neo4jService:
                 content=content,
             )
 
+    def get_knowledge_relationships(self, entity_ids: list[str], limit: int = 6) -> list[dict]:
+        """Read only neighbors of tenant-scoped entities from permitted search results."""
+        query = """
+        MATCH (source)-[r]->(target)
+        WHERE (source.id IN $ids OR target.id IN $ids)
+          AND source.organization_id = target.organization_id
+          AND source.connector_id = target.connector_id
+        RETURN DISTINCT coalesce(source.title, source.name, source.id) AS source,
+               type(r) AS relationship, coalesce(target.title, target.name, target.id) AS target
+        LIMIT $limit
+        """
+        with self.driver.session(default_access_mode="READ") as session:
+            return [dict(record) for record in session.run(Query(query, timeout=5),
+                    ids=entity_ids[:3], limit=max(1, min(limit, 6)))]
+
+    def get_github_contributors(self, repository_ids: list[str], limit: int = 6) -> list[dict]:
+        """One representative commit per contributor in the permitted repositories."""
+        if not repository_ids:
+            return []
+        query = """
+        MATCH (u:User)-[:COMMITTED]->(c:Commit)-[:BELONGS_TO]->(r:Repository)
+        WHERE r.id IN $repository_ids OR r.url IN $repository_urls
+        WITH coalesce(u.name, u.id) AS contributor, min(c.id) AS commit
+        RETURN contributor AS source, 'COMMITTED' AS relationship, commit AS target
+        ORDER BY source
+        LIMIT $limit
+        """
+        with self.driver.session(default_access_mode="READ") as session:
+            return [record.data() for record in session.run(Query(query, timeout=5),
+                repository_ids=repository_ids[:3],
+                repository_urls=[f"https://github.com/{repo}" for repo in repository_ids[:3]],
+                limit=max(1, min(limit, 6)))]
+
     def get_github_relationships(self, repository_ids: list[str], terms: list[str], limit: int = 6) -> list[dict]:
         """Read the existing GitHub commit paths, restricted to permitted repositories."""
         if not repository_ids:

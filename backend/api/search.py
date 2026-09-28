@@ -1,4 +1,5 @@
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -21,12 +22,14 @@ def knowledge_scope(db: Session, user: User) -> dict | None:
     if not user.organization_id:
         return None
     connectors = db.query(Connector.id).filter(
-        Connector.organization_id == user.organization_id, func.lower(Connector.type) == "github"
+        Connector.organization_id == user.organization_id,
+        func.lower(Connector.type).in_(["github", "jira", "confluence", "slack"])
     ).all()
     if not connectors:
         return None
     return {"$and": [{"organization_id": user.organization_id},
-                     {"connector_id": {"$in": [row.id for row in connectors]}}, {"source": "github"}]}
+                     {"connector_id": {"$in": [row.id for row in connectors]}},
+                     {"source": {"$in": ["github", "jira", "confluence", "slack"]}}]}
 
 
 def search_unavailable(error: Exception):
@@ -39,6 +42,18 @@ def retrieve_knowledge(query: str, top_k: int, db: Session, user: User) -> dict:
     scope = knowledge_scope(db, user)
     if scope is None:
         return {"query": query, "results": [], "document_count": 0}
+    # Narrow only the source clause; tenant and permitted connector IDs remain intact.
+    sources = [name for name in ("github", "jira", "confluence", "slack")
+               if re.search(rf"\b{name}\b", query, re.IGNORECASE)]
+    if not sources and re.search(r"\b(contribut\w*|committers?)\b", query, re.IGNORECASE) and re.search(r"\brepository\b", query, re.IGNORECASE):
+        sources = ["github"]
+    if sources:
+        scope["$and"][2] = {"source": {"$in": sources}}
+    if len(sources) == 1:
+        kind = {"jira": ("issues?", "Issue"), "slack": ("users?", "User"),
+                "confluence": ("pages?", "Page")}.get(sources[0])
+        if kind and re.search(rf"\b{kind[0]}\b", query, re.IGNORECASE):
+            scope["$and"].append({"entity_type": {"$in": [kind[1], kind[1].lower()]}})
     try:
         return SemanticSearchService().search(query, top_k, where=scope)
     except Exception as error:

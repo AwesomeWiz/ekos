@@ -1,4 +1,5 @@
-﻿import { ArrowRight, BookOpen, Github, Hash, Layers, LoaderCircle, Puzzle, RefreshCw } from 'lucide-react';
+import { ConnectorLogo } from '../ConnectorLogo';
+import { ArrowRight, LoaderCircle, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { PanelCard } from '../layout/RightPanel';
@@ -56,11 +57,10 @@ export function ConnectedSources({ full = false }: { full?: boolean }) {
       : connectors.length === 0 ? <p className="state-message">No connectors have been registered for your organization.</p>
       : <div className="source-list">{connectors.map(source => {
         const type = source.type.trim().toLowerCase();
-        const Icon = ({ github: Github, jira: Layers, confluence: BookOpen, slack: Hash } as Record<string, typeof Github>)[type] || Puzzle;
         const action = actions[source.id];
         const configured = !unconfiguredStatuses.has(normalizedStatus(source.status));
         return <div className="connector-entry" key={source.id} role="group" aria-label={source.name}>
-          <div className="connector-row"><span className="source-icon"><Icon size={20} /></span><div className="connector-copy"><p className="item-name">{source.name}</p><p className="item-meta">{source.type} · {stateLabel(source.status)}</p><p className="item-meta">{syncLabel(source.configuration?.last_sync)}</p></div><span className={`connection-state status-${source.status.toLowerCase().replace(/[^a-z]/g, '')}`}>{source.status.replaceAll('_', ' ')}</span></div>
+          <div className="connector-row"><span className="source-icon"><ConnectorLogo type={type} /></span><div className="connector-copy"><p className="item-name">{source.name}</p><p className="item-meta">{source.type} · {stateLabel(source.status)}</p><p className="item-meta">{syncLabel(source.configuration?.last_sync)}</p></div><span className={`connection-state status-${source.status.toLowerCase().replace(/[^a-z]/g, '')}`}>{source.status.replaceAll('_', ' ')}</span></div>
           {full && supportedTypes.some(value => value.toLowerCase() === type) && <div className="connector-actions">
             {canTest && <button type="button" disabled={!configured || !!action?.pending} title={configured ? 'Test the backend connection' : 'Configure this connector on the backend first'} onClick={() => void runAction(source.id, 'test')}>{action?.pending === 'test' ? 'Testing…' : 'Test connection'}</button>}
             {canSync && <button type="button" disabled={!configured || !!action?.pending} title={configured ? 'Sync connector data' : 'Configure this connector on the backend first'} onClick={() => void runAction(source.id, 'sync')}>{action?.pending === 'sync' ? 'Syncing…' : 'Sync'}</button>}
@@ -75,8 +75,7 @@ export function ConnectedSources({ full = false }: { full?: boolean }) {
         </div>;
       })}</div>}
     {full && profile && !authLoading && !loading && !error && <div className="source-list">{supportedTypes.filter(type => !connectors.some(source => source.type.trim().toLowerCase() === type.toLowerCase())).map(type => {
-      const Icon = ({ GitHub: Github, Jira: Layers, Confluence: BookOpen, Slack: Hash } as Record<string, typeof Github>)[type];
-      return <div className="connector-entry" key={type} role="group" aria-label={type}><div className="connector-row"><span className="source-icon"><Icon size={20} /></span><div className="connector-copy"><p className="item-name">{type}</p><p className="item-meta">Supported · Not configured</p><p className="item-meta">No connector record registered.</p></div><span className="connection-state status-notconfigured">Not configured</span></div>
+      return <div className="connector-entry" key={type} role="group" aria-label={type}><div className="connector-row"><span className="source-icon"><ConnectorLogo type={type} /></span><div className="connector-copy"><p className="item-name">{type}</p><p className="item-meta">Supported · Not configured</p><p className="item-meta">No connector record registered.</p></div><span className="connection-state status-notconfigured">Not configured</span></div>
         <p className="item-meta action-result">Configure this connector on the backend.</p>
       </div>;
     })}</div>}

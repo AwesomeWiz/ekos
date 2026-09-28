@@ -21,7 +21,7 @@ export function KnowledgeGraphCanvas({ nodes, edges, selected, visibleIds, onSel
     const related = edges.filter(edge => edge.source === node.id && angles.has(edge.target)).map(edge => angles.get(edge.target)!);
     const angle = angles.get(node.id) ?? (related.length ? Math.atan2(related.reduce((sum, value) => sum + Math.sin(value), 0), related.reduce((sum, value) => sum + Math.cos(value), 0)) : others.indexOf(node) * Math.PI * 2 / Math.max(1, others.length));
     const outer = node.type !== 'Commit';
-    return { ...node, x: 380 + (outer ? 315 : 210) * Math.cos(angle), y: 290 + (outer ? 235 : 130) * Math.sin(angle) };
+    return { ...node, x: 380 + (outer ? 315 : 210) * Math.cos(angle), y: 290 + (outer ? 245 : 160) * Math.sin(angle) };
   });
   const visibleNodes = positioned.filter(node => visibleIds.includes(node.id));
   const visibleEdges = edges.filter(edge => visibleIds.includes(edge.source) && visibleIds.includes(edge.target)).flatMap(edge => {
@@ -31,8 +31,8 @@ export function KnowledgeGraphCanvas({ nodes, edges, selected, visibleIds, onSel
   });
   const zoom = (change: number) => setView(previous => {
     const scale = Math.min(2.5, Math.max(0.5, Math.round((previous.scale + change) * 100) / 100));
-    const centerX = (viewport.current?.clientWidth || 760) / 2;
-    const centerY = (viewport.current?.clientHeight || 580) / 2;
+    const centerX = (canvas.current?.clientWidth || 760) / 2;
+    const centerY = (canvas.current?.clientHeight || 580) / 2;
     return { scale, x: centerX - (centerX - previous.x) * scale / previous.scale, y: centerY - (centerY - previous.y) * scale / previous.scale };
   });
   const start = (event: PointerEvent<HTMLDivElement>) => {
@@ -75,9 +75,9 @@ export function KnowledgeGraphCanvas({ nodes, edges, selected, visibleIds, onSel
     onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
     onClickCapture={event => { if (suppressClick.current && event.detail !== 0) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); } }}>
     <div className="graph-zoom-controls" role="group" aria-label="Graph zoom controls">
-      <button className="toolbar-button" aria-label="Zoom out" disabled={view.scale <= 0.5} onClick={() => zoom(-0.2)}><Minus size={15} /></button>
+      <button className="toolbar-button" title="Zoom out" aria-label="Zoom out" disabled={view.scale <= 0.5} onClick={() => zoom(-0.2)}><Minus size={15} /></button>
       <span className="item-meta" aria-live="polite">{Math.round(view.scale * 100)}%</span>
-      <button className="toolbar-button" aria-label="Zoom in" disabled={view.scale >= 2.5} onClick={() => zoom(0.2)}><Plus size={15} /></button>
+      <button className="toolbar-button" title="Zoom in" aria-label="Zoom in" disabled={view.scale >= 2.5} onClick={() => zoom(0.2)}><Plus size={15} /></button>
     </div>
     <div ref={canvas} className="graph-canvas" role="group" aria-label="GitHub knowledge graph" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transformOrigin: '0 0' }}>
     <svg className="graph-edges" viewBox="0 0 760 580" preserveAspectRatio="none" aria-hidden="true">

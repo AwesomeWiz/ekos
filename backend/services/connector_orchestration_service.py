@@ -11,6 +11,7 @@ from schemas.ingestion import NormalizedRecord
 from services.ingestion_service import IngestionService
 from services import github_service
 from config.settings import settings
+from services.normalized_ingestion import ingest_connector_records
 
 _ingestion_service = IngestionService()
 
@@ -125,18 +126,12 @@ def sync_connector_execution(db: Session, connector: Connector) -> ConnectorSync
             detail=f"{connector.name} sync failed. Check backend credentials, permissions, and connectivity.",
         ) from error
 
-    normalized_records = []
-    if isinstance(raw_records, list):
-        for item in raw_records:
-            if isinstance(item, NormalizedRecord):
-                normalized_records.append(item)
-            elif isinstance(item, dict):
-                try:
-                    normalized_records.append(NormalizedRecord(**item))
-                except Exception:
-                    pass
-
-    ingestion_stats = _ingestion_service.process_records(connector.name, normalized_records)
+    try:
+        ingestion_stats = ingest_connector_records(connector, raw_records)
+    except Exception as error:
+        connector.status = "error"
+        db.commit()
+        raise HTTPException(status_code=503, detail="Connector data was fetched, but knowledge ingestion failed. Check backend storage/model setup and retry Sync.") from error
 
     synced_at = datetime.now(timezone.utc)
     connector.status = "synced"
@@ -147,8 +142,6 @@ def sync_connector_execution(db: Session, connector: Connector) -> ConnectorSync
     return ConnectorSyncResponse(
         status="success",
         connector=connector.name,
-        records_processed=ingestion_stats.records_processed,
-        documents_indexed=ingestion_stats.documents_indexed,
-        graph_nodes_updated=ingestion_stats.graph_nodes_updated,
+        **ingestion_stats,
         synced_at=synced_at,
     )

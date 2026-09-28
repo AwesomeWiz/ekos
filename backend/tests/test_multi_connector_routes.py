@@ -1,4 +1,4 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 import pytest
 
@@ -16,6 +16,9 @@ def test_generic_routes_use_existing_clients(client, db, monkeypatch, kind):
     sync = Mock(return_value=[{"source": kind, "entity_type": "Issue", "external_id": "1", "title": "Example", "content": "Content"}])
     monkeypatch.setattr(cls, "test_connection", account)
     monkeypatch.setattr(cls, "sync", sync)
+    graph = MagicMock()
+    monkeypatch.setattr("services.normalized_ingestion.Neo4jService", lambda **kwargs: graph)
+    monkeypatch.setattr("api.chat.retrieve_graph_context", lambda *args: [])
     admin = db.query(User).filter_by(email="admin@aekos.com").one()
     record = Connector(name=f"Team {kind}", type=kind, organization_id=admin.organization_id)
     record.configuration = ConnectorConfiguration(api_url="https://example.invalid", encrypted_token="test-token")
@@ -34,8 +37,18 @@ def test_generic_routes_use_existing_clients(client, db, monkeypatch, kind):
     synced = client.post(f"/api/connectors/{record.id}/sync", headers=headers)
     assert synced.status_code == 200
     assert synced.json()["records_processed"] == 1
-    assert synced.json()["documents_indexed"] == 0
-    assert synced.json()["graph_nodes_updated"] == 0
+    assert synced.json()["documents_indexed"] == 1
+    assert synced.json()["graph_nodes_updated"] == 1
+    graph.driver.session.assert_called_once()
+    from services.knowledge_runtime import get_chroma_service
+    stored = get_chroma_service().collection.get(where={"connector_id": record.id})
+    assert len(stored["ids"]) == 1
+    assert stored["metadatas"][0]["source"] == kind
+    assert stored["metadatas"][0]["organization_id"] == admin.organization_id
+    monkeypatch.setattr("api.chat.OllamaService.generate", lambda self, prompt: "Example: Content")
+    chat_response = client.post("/api/chat", json={"message": "What is Example?"}, headers=headers)
+    assert chat_response.status_code == 200
+    assert chat_response.json()["sources"][0]["source"] == kind
     assert record.status == "synced"
     assert record.configuration.last_sync is not None
     account.assert_called_once()

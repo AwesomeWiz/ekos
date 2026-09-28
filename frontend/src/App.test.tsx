@@ -5,6 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { App } from './App';
 
 beforeEach(() => {
+  vi.stubGlobal('innerWidth', 1366);
   sessionStorage.clear();
   Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Offline')));
@@ -38,7 +39,7 @@ async function signIn() {
 describe('complete demo flows', () => {
   it('keeps anonymous chat usable without inventing source status', () => {
     openRoute();
-    expect(screen.getByRole('heading', { name: 'Hello, there.' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Good (morning|afternoon|evening), there\./ })).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Send message' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('Sign in to view your connected sources.')).toBeTruthy();
     expect(screen.queryByText('Up to date')).toBeNull();
